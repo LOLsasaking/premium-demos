@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="MAISON ROSE — estudio de uñas y belleza en Tenerife. Manicura, pedicura y nail art. Reserva tu cita." />
+<title>Maison Rose · Estudio de Uñas en Tenerife</title>
+
+<!-- ============================================================
+     ESTILO SALÓN DE UÑAS: elegante, femenino, lujoso. Crema/rosa
+     empolvado + dorado. Tipografía editorial (Cormorant + Jost).
+     Hero en VÍDEO de manicura. Estructura: Hero → Sobre →
+     Servicios → Galería nail art → Testimonios → CTA reserva.
+     ============================================================ -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        blush: '#F6E7E1',     // rosa empolvado (fondo claro)
+        rosewood: '#A8786E',  // palo de rosa (acento)
+        mauve: '#7D5A54',     // malva profundo (texto oscuro)
+        champ: '#C8A24B',     // champán/dorado
+        ivory: '#FBF6F2',     // marfil
+      },
+      fontFamily: {
+        serif: ['"Cormorant Garamond"','Georgia','serif'],
+        sans: ['Jost','system-ui','sans-serif'],
+      },
+    }},
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html{scroll-behavior:smooth;}
+  body{font-family:'Jost',sans-serif;background:#FBF6F2;color:#7D5A54;}
+  .font-serif{font-family:'Cormorant Garamond',serif;}
+
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity .9s ease,transform .9s ease;}
+  .reveal.in{opacity:1;transform:none;}
+
+  .hero-scrim{background:linear-gradient(180deg,rgba(125,90,84,.35),rgba(125,90,84,.2) 45%,rgba(125,90,84,.7));}
+
+  .btn-rose{background:#A8786E;color:#FBF6F2;letter-spacing:.05em;transition:all .3s ease;box-shadow:0 8px 24px rgba(168,120,110,.3);}
+  .btn-rose:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(168,120,110,.45);}
+  .btn-ghost{border:1px solid rgba(251,246,242,.7);color:#FBF6F2;backdrop-filter:blur(6px);transition:all .3s;}
+  .btn-ghost:hover{background:rgba(251,246,242,.15);}
+
+  /* Filete dorado fino */
+  .rule::after{content:'';display:block;width:60px;height:1.5px;background:#C8A24B;margin:16px auto 0;}
+  .rule.left::after{margin-left:0;}
+
+  .svc{background:#fff;border:1px solid rgba(168,120,110,.12);transition:all .35s ease;}
+  .svc:hover{transform:translateY(-5px);box-shadow:0 20px 45px rgba(168,120,110,.18);border-color:rgba(200,162,75,.4);}
+
+  .gal{transition:transform .6s ease;filter:saturate(.95);}
+  .gal:hover{transform:scale(1.05);filter:saturate(1.1);}
+
+  #nav{transition:background .4s,box-shadow .4s;}
+  #nav.solid{background:rgba(251,246,242,.92);backdrop-filter:blur(12px);box-shadow:0 4px 30px rgba(168,120,110,.15);}
+  #nav.solid .nav-link{color:#7D5A54;} #nav.solid .nav-brand{color:#7D5A54;}
+
+  .float-cta{animation:fp 3s ease-in-out infinite;}
+  @keyframes fp{0%,100%{box-shadow:0 10px 30px rgba(168,120,110,.4);}50%{box-shadow:0 10px 40px rgba(168,120,110,.65);}}
+  .no-scroll{overflow:hidden;} .modal-backdrop{background:rgba(125,90,84,.6);backdrop-filter:blur(8px);}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav id="nav" class="fixed top-0 inset-x-0 z-50 py-5">
+  <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+    <a href="#inicio" class="nav-brand font-serif text-3xl tracking-wide text-white">Maison <span class="italic text-champ">Rose</span></a>
+    <ul class="hidden md:flex items-center gap-9 text-sm tracking-wide">
+      <li><a href="#sobre" class="nav-link text-white/85 hover:text-champ transition">El estudio</a></li>
+      <li><a href="#servicios" class="nav-link text-white/85 hover:text-champ transition">Servicios</a></li>
+      <li><a href="#galeria" class="nav-link text-white/85 hover:text-champ transition">Galería</a></li>
+      <li><a href="#opiniones" class="nav-link text-white/85 hover:text-champ transition">Opiniones</a></li>
+    </ul>
+    <button onclick="openBook()" class="btn-rose px-6 py-2.5 rounded-full text-sm">Reservar cita</button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO — VÍDEO de manicura/nail art. Stock Mixkit.
+     Sustituir por tu vídeo: detalle de manos, esmaltado, nail art.
+     Poster = primera imagen para carga instantánea.
+     ============================================================ -->
+<header id="inicio" class="relative h-screen min-h-[640px] flex items-center justify-center overflow-hidden">
+  <video class="absolute inset-0 w-full h-full object-cover" autoplay muted loop playsinline
+    poster="https://images.unsplash.com/photo-1604654894610-df63bc536371?w=1920&q=80&auto=format&fit=crop">
+    <source src="https://assets.mixkit.co/videos/preview/mixkit-woman-getting-a-manicure-in-a-salon-44872-large.mp4" type="video/mp4" />
+    <source src="https://assets.mixkit.co/videos/preview/mixkit-applying-nail-polish-to-the-nails-of-a-hand-44873-large.mp4" type="video/mp4" />
+  </video>
+  <div class="absolute inset-0 hero-scrim"></div>
+
+  <div class="relative z-10 text-center px-6 max-w-3xl">
+    <p class="tracking-[0.4em] uppercase text-champ text-xs md:text-sm mb-5 reveal">Estudio de uñas &amp; belleza · Tenerife</p>
+    <h1 class="font-serif text-white text-6xl md:text-8xl leading-[1.02] mb-6 reveal">
+      Manos que<br/><span class="italic text-champ">enamoran</span>
+    </h1>
+    <p class="text-white/85 text-lg md:text-xl max-w-xl mx-auto mb-10 reveal font-light">
+      Manicura, pedicura y nail art de autor en un espacio creado para mimarte. Cada detalle cuenta.
+    </p>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 reveal">
+      <button onclick="openBook()" class="btn-rose px-9 py-4 rounded-full">Reservar mi cita</button>
+      <a href="#servicios" class="btn-ghost px-9 py-4 rounded-full">Ver servicios</a>
+    </div>
+  </div>
+
+  <a href="#sobre" class="absolute bottom-7 left-1/2 -translate-x-1/2 text-white/70 z-10" aria-label="Bajar"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg></a>
+</header>
+
+<!-- SOBRE -->
+<section id="sobre" class="py-24 md:py-32">
+  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 items-center">
+    <div class="reveal">
+      <div class="relative">
+        <img src="https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&q=80&auto=format&fit=crop" alt="Detalle de manicura" class="rounded-[2rem] w-full object-cover aspect-[4/5]"/>
+        <div class="absolute -bottom-6 -left-6 bg-ivory rounded-2xl px-7 py-5 shadow-xl border border-rosewood/10 hidden sm:block">
+          <p class="font-serif text-4xl text-champ">5.0</p>
+          <p class="text-xs uppercase tracking-widest text-mauve/60">+200 reseñas</p>
+        </div>
+      </div>
+    </div>
+    <div class="reveal">
+      <p class="uppercase tracking-[0.3em] text-rosewood text-xs mb-4">El estudio</p>
+      <h2 class="font-serif text-5xl md:text-6xl leading-tight mb-6 rule left">Tu momento de calma</h2>
+      <p class="text-mauve/70 text-lg leading-relaxed mb-5 font-light">
+        Maison Rose nace para que cuidarse sea un ritual, no una prisa. Un estudio acogedor, productos de primera y manos expertas que escuchan lo que necesitas.
+      </p>
+      <p class="text-mauve/70 text-lg leading-relaxed mb-8 font-light">
+        Desde una manicura semipermanente impecable hasta el nail art más personal. Sales sintiéndote tú, pero mejor.
+      </p>
+      <div class="grid grid-cols-3 gap-6">
+        <div><p class="font-serif text-4xl text-rosewood">8</p><p class="text-xs uppercase tracking-wider text-mauve/50 mt-1">años mimando</p></div>
+        <div><p class="font-serif text-4xl text-rosewood">40+</p><p class="text-xs uppercase tracking-wider text-mauve/50 mt-1">diseños</p></div>
+        <div><p class="font-serif text-4xl text-rosewood">100%</p><p class="text-xs uppercase tracking-wider text-mauve/50 mt-1">mimo</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS -->
+<section id="servicios" class="py-24 md:py-32 bg-blush">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-16 reveal">
+      <p class="uppercase tracking-[0.3em] text-rosewood text-xs mb-4">Servicios</p>
+      <h2 class="font-serif text-5xl md:text-6xl rule">Mímate como mereces</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="svc rounded-[1.5rem] overflow-hidden reveal">
+        <img src="https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600&q=80&auto=format&fit=crop" alt="Manicura" class="w-full aspect-[4/3] object-cover"/>
+        <div class="p-7"><h3 class="font-serif text-2xl">Manicura semipermanente</h3><p class="text-mauve/60 text-sm mt-2 font-light">Color liso o francesa, acabado impecable que dura semanas.</p><div class="flex justify-between items-center mt-4"><span class="text-xs uppercase tracking-wider text-mauve/40">1 h</span><span class="font-serif text-2xl text-rosewood">20€</span></div></div>
+      </div>
+      <div class="svc rounded-[1.5rem] overflow-hidden reveal">
+        <img src="https://images.unsplash.com/photo-1610992015732-2449b76344bc?w=600&q=80&auto=format&fit=crop" alt="Uñas de porcelana" class="w-full aspect-[4/3] object-cover"/>
+        <div class="p-7"><h3 class="font-serif text-2xl">Uñas de porcelana</h3><p class="text-mauve/60 text-sm mt-2 font-light">Esculpidas a medida, resistentes y naturales. El servicio estrella.</p><div class="flex justify-between items-center mt-4"><span class="text-xs uppercase tracking-wider text-mauve/40">1 h 30</span><span class="font-serif text-2xl text-rosewood">35€</span></div></div>
+      </div>
+      <div class="svc rounded-[1.5rem] overflow-hidden reveal">
+        <img src="https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=600&q=80&auto=format&fit=crop" alt="Pedicura" class="w-full aspect-[4/3] object-cover"/>
+        <div class="p-7"><h3 class="font-serif text-2xl">Pedicura spa</h3><p class="text-mauve/60 text-sm mt-2 font-light">Exfoliación, masaje e hidratación. Pies de seda.</p><div class="flex justify-between items-center mt-4"><span class="text-xs uppercase tracking-wider text-mauve/40">1 h 30</span><span class="font-serif text-2xl text-rosewood">32€</span></div></div>
+      </div>
+    </div>
+    <div class="text-center mt-12 reveal"><button onclick="openBook()" class="btn-rose px-9 py-4 rounded-full">Reservar mi cita</button></div>
+  </div>
+</section>
+
+<!-- GALERÍA NAIL ART -->
+<section id="galeria" class="py-24 md:py-32">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="text-center mb-14 reveal">
+      <p class="uppercase tracking-[0.3em] text-rosewood text-xs mb-4">Nail art</p>
+      <h2 class="font-serif text-5xl md:text-6xl rule">Nuestra galería</h2>
+      <p class="text-mauve/55 mt-5 font-light">Cada uña, una pequeña obra de arte.</p>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+      <div class="overflow-hidden rounded-2xl row-span-2 reveal"><img class="gal w-full h-full object-cover" src="https://images.unsplash.com/photo-1604654894610-df63bc536371?w=700&q=80&auto=format&fit=crop" alt="Nail art"/></div>
+      <div class="overflow-hidden rounded-2xl reveal"><img class="gal w-full h-full object-cover" src="https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=500&q=80&auto=format&fit=crop" alt="Manicura"/></div>
+      <div class="overflow-hidden rounded-2xl reveal"><img class="gal w-full h-full object-cover" src="https://images.unsplash.com/photo-1610992015732-2449b76344bc?w=500&q=80&auto=format&fit=crop" alt="Porcelana"/></div>
+      <div class="overflow-hidden rounded-2xl col-span-2 reveal"><img class="gal w-full h-full object-cover aspect-[16/9]" src="https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=900&q=80&auto=format&fit=crop" alt="Detalle"/></div>
+      <div class="overflow-hidden rounded-2xl reveal"><img class="gal w-full h-full object-cover" src="https://images.unsplash.com/photo-1607779097040-26e80aa78e66?w=500&q=80&auto=format&fit=crop" alt="Diseño"/></div>
+      <div class="overflow-hidden rounded-2xl reveal"><img class="gal w-full h-full object-cover" src="https://images.unsplash.com/photo-1636018943414-86c0c1d3a3cf?w=500&q=80&auto=format&fit=crop" alt="Color"/></div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIOS -->
+<section id="opiniones" class="py-24 md:py-32 bg-blush">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 reveal"><p class="uppercase tracking-[0.3em] text-rosewood text-xs mb-4">Opiniones</p><h2 class="font-serif text-5xl md:text-6xl rule">Clientas felices</h2></div>
+    <div class="grid md:grid-cols-3 gap-6">
+      <figure class="bg-white rounded-[1.5rem] p-8 reveal"><div class="text-champ mb-4">★★★★★</div><blockquote class="text-mauve/75 italic font-serif text-xl leading-relaxed mb-6">"El mejor sitio de Tenerife. Mis uñas duran semanas perfectas y el trato es maravilloso."</blockquote><figcaption class="text-sm tracking-wide font-medium">Claudia D.</figcaption></figure>
+      <figure class="bg-white rounded-[1.5rem] p-8 reveal"><div class="text-champ mb-4">★★★★★</div><blockquote class="text-mauve/75 italic font-serif text-xl leading-relaxed mb-6">"Reservé online en un momento. El nail art que me hicieron fue justo lo que soñaba."</blockquote><figcaption class="text-sm tracking-wide font-medium">Nayra M.</figcaption></figure>
+      <figure class="bg-white rounded-[1.5rem] p-8 reveal"><div class="text-champ mb-4">★★★★★</div><blockquote class="text-mauve/75 italic font-serif text-xl leading-relaxed mb-6">"Un espacio precioso y relajante. Salgo siempre encantada. 100% recomendable."</blockquote><figcaption class="text-sm tracking-wide font-medium">Lucía R.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="relative py-28 md:py-36 overflow-hidden">
+  <img src="https://images.unsplash.com/photo-1607779097040-26e80aa78e66?w=1920&q=80&auto=format&fit=crop" alt="" class="absolute inset-0 w-full h-full object-cover"/>
+  <div class="absolute inset-0" style="background:rgba(125,90,84,.75)"></div>
+  <div class="relative z-10 max-w-2xl mx-auto px-6 text-center text-white">
+    <h2 class="font-serif text-5xl md:text-7xl mb-6">Regálate un momento Maison Rose</h2>
+    <p class="text-white/80 text-lg mb-9 font-light">Reserva online y elige tu servicio, día y hora.</p>
+    <button onclick="openBook()" class="btn-rose px-10 py-4 rounded-full text-lg">Reservar cita</button>
+  </div>
+</section>
+
+<footer class="bg-mauve text-white/70 py-14">
+  <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-10">
+    <div><p class="font-serif text-3xl text-white">Maison <span class="italic text-champ">Rose</span></p><p class="text-sm mt-2 font-light">Estudio de uñas &amp; belleza.<br/>Tenerife, Islas Canarias.</p></div>
+    <div><p class="uppercase text-white text-sm tracking-wider mb-3">Horario</p><ul class="text-sm space-y-1 font-light"><li class="flex justify-between"><span>Lun – Vie</span><span>09:00 – 19:00</span></li><li class="flex justify-between"><span>Sábado</span><span>10:00 – 14:00</span></li><li class="flex justify-between text-white/40"><span>Domingo</span><span>Cerrado</span></li></ul></div>
+    <div><p class="uppercase text-white text-sm tracking-wider mb-3">Reservas</p><button onclick="openBook()" class="btn-rose px-6 py-3 rounded-full text-sm w-full">Reservar cita</button><p class="text-xs text-white/40 mt-4">Hecho por Santipulse · Demo</p></div>
+  </div>
+</footer>
+
+<button onclick="openBook()" class="float-cta fixed bottom-6 right-6 z-40 btn-rose px-6 py-4 rounded-full flex items-center gap-2">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Reservar
+</button>
+
+<!-- MODAL RESERVA -->
+<div id="bookModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 modal-backdrop">
+  <div class="bg-ivory rounded-[1.5rem] w-full max-w-md p-8 relative">
+    <button onclick="closeBook()" class="absolute top-5 right-5 text-mauve/40 hover:text-mauve" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <p class="uppercase tracking-[0.3em] text-rosewood text-xs mb-2">Reserva</p>
+    <h3 class="font-serif text-4xl mb-6">Reserva tu cita</h3>
+    <form id="bookForm" class="space-y-4">
+      <select class="w-full bg-white border border-rosewood/20 rounded-xl px-4 py-3 focus:outline-none focus:border-rosewood"><option>Manicura semipermanente · 20€</option><option>Uñas de porcelana · 35€</option><option>Pedicura spa · 32€</option><option>Nail art personalizado</option></select>
+      <div class="grid grid-cols-2 gap-3">
+        <input required type="date" class="bg-white border border-rosewood/20 rounded-xl px-4 py-3 focus:outline-none focus:border-rosewood"/>
+        <select class="bg-white border border-rosewood/20 rounded-xl px-4 py-3 focus:outline-none focus:border-rosewood"><option>10:00</option><option>11:30</option><option>16:00</option><option>17:30</option></select>
+      </div>
+      <input required type="text" placeholder="Tu nombre" class="w-full bg-white border border-rosewood/20 rounded-xl px-4 py-3 focus:outline-none focus:border-rosewood"/>
+      <input required type="tel" placeholder="Teléfono" class="w-full bg-white border border-rosewood/20 rounded-xl px-4 py-3 focus:outline-none focus:border-rosewood"/>
+      <button type="submit" class="btn-rose w-full py-4 rounded-xl">Confirmar cita</button>
+    </form>
+    <div id="bookOk" class="hidden text-center py-6"><div class="text-5xl mb-3 text-rosewood">✓</div><p class="font-serif text-3xl mb-1">¡Cita reservada!</p><p class="text-mauve/60 text-sm">Te esperamos. Confirmación enviada.</p></div>
+  </div>
+</div>
+
+<script>
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  const nav=document.getElementById('nav'); addEventListener('scroll',()=>nav.classList.toggle('solid',scrollY>60));
+  const m=document.getElementById('bookModal');
+  function openBook(){m.classList.remove('hidden');m.classList.add('flex');document.body.classList.add('no-scroll');}
+  function closeBook(){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('no-scroll');document.getElementById('bookForm').classList.remove('hidden');document.getElementById('bookOk').classList.add('hidden');}
+  m.addEventListener('click',e=>{if(e.target===m)closeBook();}); addEventListener('keydown',e=>{if(e.key==='Escape')closeBook();});
+  document.getElementById('bookForm').addEventListener('submit',e=>{e.preventDefault();document.getElementById('bookForm').classList.add('hidden');document.getElementById('bookOk').classList.remove('hidden');});
+</script>
+</body>
+</html>

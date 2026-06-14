@@ -1,0 +1,13 @@
+
+# --- safety (publish script) ---
+node_modules/
+.next/
+out/
+dist/
+build/
+.vercel/
+*.log
+.DS_Store
+.env
+.env.local
+.env.*.local

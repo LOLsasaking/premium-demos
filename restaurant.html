@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Brasa & Mar — cocina canaria de autor en Tenerife. Reserva tu mesa y descubre nuestra carta." />
+<title>Brasa & Mar · Restaurante en Tenerife</title>
+
+<!-- ============================================================
+     STACK: Tailwind CSS (CDN) + Google Fonts.
+     Estilo: restaurante REAL (no app de delivery). Tonos cálidos,
+     tipografía editorial (Playfair + Inter), fotografía apetitosa.
+     Flujo: Hero → Sobre → Carta (con platos) → "Así que lo reservo"
+            (CTA reserva) → Galería → Testimonios → Reserva final.
+     ============================================================ -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          charcoal: '#1A1411',   // marrón casi negro, base oscura cálida
+          cream: '#F7F1E8',      // crema (fondo claro)
+          ember: '#C2410C',      // brasa / naranja quemado (acento principal)
+          gold: '#C8A24B',       // dorado (detalles premium)
+          olive: '#5C5138',      // verde oliva apagado
+        },
+        fontFamily: {
+          serif: ['"Playfair Display"', 'Georgia', 'serif'],
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', sans-serif; background: #F7F1E8; color: #1A1411; }
+  .font-serif { font-family: 'Playfair Display', serif; }
+
+  /* Reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .9s ease, transform .9s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* Hero: oscurecer el vídeo para legibilidad del texto */
+  .hero-scrim {
+    background: linear-gradient(180deg, rgba(26,20,17,.55) 0%, rgba(26,20,17,.35) 40%, rgba(26,20,17,.85) 100%);
+  }
+
+  /* Botón premium con relleno deslizante */
+  .btn-ember {
+    background: #C2410C; color: #fff; position: relative; overflow: hidden;
+    transition: transform .3s ease, box-shadow .3s ease;
+    box-shadow: 0 8px 24px rgba(194,65,12,.3);
+  }
+  .btn-ember:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(194,65,12,.45); }
+
+  .btn-outline {
+    border: 1px solid rgba(255,255,255,.6); color: #fff; backdrop-filter: blur(6px);
+    transition: all .3s ease;
+  }
+  .btn-outline:hover { background: rgba(255,255,255,.12); border-color: #fff; }
+
+  /* Línea decorativa dorada */
+  .rule-gold::after {
+    content: ''; display: block; width: 64px; height: 2px; background: #C8A24B; margin: 18px auto 0;
+  }
+  .rule-gold.left::after { margin-left: 0; }
+
+  /* Tarjeta de plato: zoom sutil en hover */
+  .dish img { transition: transform .7s cubic-bezier(.2,1,.3,1); }
+  .dish:hover img { transform: scale(1.08); }
+
+  /* Galería: efecto de profundidad */
+  .gal-item { transition: transform .5s ease, filter .5s ease; filter: saturate(.92); }
+  .gal-item:hover { transform: scale(1.03); filter: saturate(1.15); }
+
+  /* Navbar: cambia a sólido al hacer scroll */
+  #nav { transition: background .4s ease, box-shadow .4s ease, padding .4s ease; }
+  #nav.solid { background: rgba(26,20,17,.92); backdrop-filter: blur(12px); box-shadow: 0 4px 30px rgba(0,0,0,.25); }
+
+  /* Floating reserve button */
+  .float-cta { animation: floatPulse 3s ease-in-out infinite; }
+  @keyframes floatPulse { 0%,100% { box-shadow: 0 10px 30px rgba(194,65,12,.4);} 50% { box-shadow: 0 10px 40px rgba(194,65,12,.7);} }
+
+  .no-scroll { overflow: hidden; }
+  .modal-backdrop { background: rgba(26,20,17,.8); backdrop-filter: blur(8px); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAVBAR — transparente sobre el hero, sólido al hacer scroll.
+     ============================================================ -->
+<nav id="nav" class="fixed top-0 inset-x-0 z-50 py-5">
+  <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+    <a href="#inicio" class="font-serif text-2xl text-white tracking-wide">Brasa <span class="text-gold">&amp;</span> Mar</a>
+    <ul class="hidden md:flex items-center gap-9 text-sm font-medium text-white/85">
+      <li><a href="#sobre" class="hover:text-gold transition">El restaurante</a></li>
+      <li><a href="#carta" class="hover:text-gold transition">Carta</a></li>
+      <li><a href="#galeria" class="hover:text-gold transition">Galería</a></li>
+      <li><a href="#opiniones" class="hover:text-gold transition">Opiniones</a></li>
+    </ul>
+    <button onclick="openReserve()" class="btn-ember px-6 py-2.5 rounded-full text-sm font-semibold">Reservar mesa</button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO — VÍDEO de fondo (fuego/brasa/cocina) + scrim oscuro.
+     VÍDEO: stock de Coverr (royalty-free, uso comercial).
+     Cámbialo por tu propio vídeo: graba 10-15s en horizontal del
+     plato estrella saliendo de la cocina, o de la brasa. Pon el
+     poster como primera imagen para carga instantánea.
+     ============================================================ -->
+<header id="inicio" class="relative h-screen min-h-[640px] flex items-center justify-center overflow-hidden">
+  <video
+    class="absolute inset-0 w-full h-full object-cover"
+    autoplay muted loop playsinline
+    poster="https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1920&q=80&auto=format&fit=crop">
+    <!-- Coverr: parrilla / brasa. Reemplazable por tu vídeo. -->
+    <source src="https://coverr.co/s3/mp4/Cooking-Steak.mp4" type="video/mp4" />
+    <source src="https://assets.mixkit.co/videos/preview/mixkit-grilling-meat-on-a-barbecue-grill-43166-large.mp4" type="video/mp4" />
+  </video>
+  <div class="absolute inset-0 hero-scrim"></div>
+
+  <div class="relative z-10 text-center px-6 max-w-3xl">
+    <p class="text-gold tracking-[0.35em] uppercase text-xs md:text-sm mb-5 reveal">Cocina canaria de autor · Tenerife</p>
+    <h1 class="font-serif text-white text-5xl md:text-7xl lg:text-8xl leading-[1.05] mb-6 reveal">
+      El sabor del<br/><span class="italic text-gold">Atlántico</span> a la brasa
+    </h1>
+    <p class="text-white/85 text-lg md:text-xl max-w-xl mx-auto mb-10 reveal">
+      Producto local, fuego de leña y vistas al mar. Una experiencia gastronómica que se vive, no se pide a domicilio.
+    </p>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 reveal">
+      <button onclick="openReserve()" class="btn-ember px-9 py-4 rounded-full font-semibold text-base">Reservar una mesa</button>
+      <a href="#carta" class="btn-outline px-9 py-4 rounded-full font-semibold text-base">Ver la carta</a>
+    </div>
+  </div>
+
+  <!-- scroll hint -->
+  <a href="#sobre" class="absolute bottom-7 left-1/2 -translate-x-1/2 text-white/70 z-10" aria-label="Bajar">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </a>
+</header>
+
+<!-- ============================================================
+     SOBRE — historia corta + 3 pilares. Imagen + texto.
+     ============================================================ -->
+<section id="sobre" class="py-24 md:py-32">
+  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 items-center">
+    <div class="reveal">
+      <div class="relative">
+        <img src="https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=900&q=80&auto=format&fit=crop"
+             alt="Chef emplatando en la cocina" class="rounded-2xl w-full object-cover aspect-[4/5]" />
+        <div class="absolute -bottom-6 -right-6 bg-charcoal text-cream rounded-2xl px-7 py-5 shadow-xl hidden sm:block">
+          <p class="font-serif text-3xl text-gold">18</p>
+          <p class="text-xs uppercase tracking-widest text-cream/70">años de cocina</p>
+        </div>
+      </div>
+    </div>
+    <div class="reveal">
+      <p class="text-ember uppercase tracking-[0.3em] text-xs mb-4">Nuestra historia</p>
+      <h2 class="font-serif text-4xl md:text-5xl leading-tight mb-6 rule-gold left">Cocina honesta, fuego y mar</h2>
+      <p class="text-charcoal/70 text-lg leading-relaxed mb-5">
+        En Brasa &amp; Mar trabajamos solo con producto de la isla: pescado del día de la lonja de Los Cristianos, carne canaria y verduras de la huerta. Todo pasa por la brasa de leña.
+      </p>
+      <p class="text-charcoal/70 text-lg leading-relaxed mb-8">
+        No somos un restaurante de prisas. Aquí se viene a sentarse, a compartir y a mirar el mar mientras la cocina hace su trabajo.
+      </p>
+      <div class="grid grid-cols-3 gap-6">
+        <div><p class="font-serif text-3xl text-ember">100%</p><p class="text-xs uppercase tracking-wider text-charcoal/50 mt-1">Producto local</p></div>
+        <div><p class="font-serif text-3xl text-ember">Leña</p><p class="text-xs uppercase tracking-wider text-charcoal/50 mt-1">Brasa de verdad</p></div>
+        <div><p class="font-serif text-3xl text-ember">Mar</p><p class="text-xs uppercase tracking-wider text-charcoal/50 mt-1">Vistas directas</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CARTA — el corazón del "no es delivery": muestra la EXPERIENCIA
+     de comer dentro. Categorías + platos con foto, descripción y precio.
+     ============================================================ -->
+<section id="carta" class="py-24 md:py-32 bg-charcoal text-cream">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-16 reveal">
+      <p class="text-gold uppercase tracking-[0.3em] text-xs mb-4">La carta</p>
+      <h2 class="font-serif text-4xl md:text-6xl rule-gold">Lo que vas a disfrutar</h2>
+      <p class="text-cream/60 max-w-xl mx-auto mt-6">Una selección de la carta. Cambia cada temporada según lo que llega del mar y de la huerta.</p>
+    </div>
+
+    <!-- Filtros de categoría (demo: scroll suave, marca activa) -->
+    <div class="flex flex-wrap justify-center gap-3 mb-14 reveal" id="menuTabs">
+      <button data-cat="todos" class="menu-tab px-5 py-2 rounded-full text-sm border border-gold/50 text-gold bg-gold/10">Todos</button>
+      <button data-cat="entrantes" class="menu-tab px-5 py-2 rounded-full text-sm border border-white/15 text-cream/70 hover:border-gold/50">Entrantes</button>
+      <button data-cat="mar" class="menu-tab px-5 py-2 rounded-full text-sm border border-white/15 text-cream/70 hover:border-gold/50">Del mar</button>
+      <button data-cat="brasa" class="menu-tab px-5 py-2 rounded-full text-sm border border-white/15 text-cream/70 hover:border-gold/50">De la brasa</button>
+      <button data-cat="postres" class="menu-tab px-5 py-2 rounded-full text-sm border border-white/15 text-cream/70 hover:border-gold/50">Postres</button>
+    </div>
+
+    <!-- Grid de platos -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-7" id="menuGrid"></div>
+
+    <!-- ============================================================
+         "ASÍ QUE LO RESERVO" — el puente del flujo. Tras ver los platos,
+         un bloque que recoge la intención: «me gusta → reservo mesa».
+         ============================================================ -->
+    <div class="mt-20 rounded-3xl overflow-hidden relative reveal">
+      <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1600&q=80&auto=format&fit=crop"
+           alt="Mesa servida en el restaurante" class="absolute inset-0 w-full h-full object-cover" />
+      <div class="absolute inset-0 bg-gradient-to-r from-charcoal via-charcoal/85 to-charcoal/40"></div>
+      <div class="relative z-10 px-8 md:px-14 py-14 md:py-20 max-w-2xl">
+        <p class="text-gold uppercase tracking-[0.3em] text-xs mb-4">¿Te ha entrado hambre?</p>
+        <h3 class="font-serif text-3xl md:text-5xl mb-5 leading-tight">Entonces ya lo sabes:<br/>reserva tu mesa</h3>
+        <p class="text-cream/75 mb-8 text-lg">Elige día y hora, dinos cuántos sois y lo dejamos todo listo. Sin colas, sin esperas — tu mesa te espera.</p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <button onclick="openReserve()" class="btn-ember px-8 py-4 rounded-full font-semibold">Reservar ahora</button>
+          <button onclick="openReserve()" class="btn-outline px-8 py-4 rounded-full font-semibold">Ver disponibilidad</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     GALERÍA — ambiente del local + platos. Refuerza "restaurante real".
+     ============================================================ -->
+<section id="galeria" class="py-24 md:py-32">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="text-center mb-14 reveal">
+      <p class="text-ember uppercase tracking-[0.3em] text-xs mb-4">El ambiente</p>
+      <h2 class="font-serif text-4xl md:text-5xl rule-gold">Así se vive Brasa &amp; Mar</h2>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+      <div class="overflow-hidden rounded-xl row-span-2 reveal">
+        <img class="gal-item w-full h-full object-cover" src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80&auto=format&fit=crop" alt="Sala del restaurante"/>
+      </div>
+      <div class="overflow-hidden rounded-xl reveal">
+        <img class="gal-item w-full h-full object-cover" src="https://images.unsplash.com/photo-1559339352-11d035aa65de?w=600&q=80&auto=format&fit=crop" alt="Plato de marisco"/>
+      </div>
+      <div class="overflow-hidden rounded-xl reveal">
+        <img class="gal-item w-full h-full object-cover" src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80&auto=format&fit=crop" alt="Mesa servida"/>
+      </div>
+      <div class="overflow-hidden rounded-xl col-span-2 reveal">
+        <img class="gal-item w-full h-full object-cover aspect-[16/9]" src="https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=900&q=80&auto=format&fit=crop" alt="Pescado a la brasa"/>
+      </div>
+      <div class="overflow-hidden rounded-xl reveal">
+        <img class="gal-item w-full h-full object-cover" src="https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=600&q=80&auto=format&fit=crop" alt="Postre"/>
+      </div>
+      <div class="overflow-hidden rounded-xl reveal">
+        <img class="gal-item w-full h-full object-cover" src="https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=600&q=80&auto=format&fit=crop" alt="Plato de carne"/>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TESTIMONIOS — confianza. 3 reseñas con estrellas.
+     ============================================================ -->
+<section id="opiniones" class="py-24 md:py-32 bg-cream">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 reveal">
+      <p class="text-ember uppercase tracking-[0.3em] text-xs mb-4">Opiniones</p>
+      <h2 class="font-serif text-4xl md:text-5xl rule-gold">Lo que dicen nuestros comensales</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-7">
+      <figure class="bg-white rounded-2xl p-8 shadow-sm reveal">
+        <div class="text-gold mb-4">★★★★★</div>
+        <blockquote class="text-charcoal/75 italic leading-relaxed mb-6">"El mejor pescado a la brasa que he comido en Tenerife. Las vistas y el trato, de diez. Volveremos seguro."</blockquote>
+        <figcaption class="text-sm"><span class="font-semibold">Elena R.</span><span class="text-charcoal/40"> · Google</span></figcaption>
+      </figure>
+      <figure class="bg-white rounded-2xl p-8 shadow-sm reveal">
+        <div class="text-gold mb-4">★★★★★</div>
+        <blockquote class="text-charcoal/75 italic leading-relaxed mb-6">"Reservé desde la web en un minuto y la mesa estaba lista. Producto local de verdad, se nota."</blockquote>
+        <figcaption class="text-sm"><span class="font-semibold">Marcos D.</span><span class="text-charcoal/40"> · TripAdvisor</span></figcaption>
+      </figure>
+      <figure class="bg-white rounded-2xl p-8 shadow-sm reveal">
+        <div class="text-gold mb-4">★★★★★</div>
+        <blockquote class="text-charcoal/75 italic leading-relaxed mb-6">"Ambiente precioso al lado del mar. Pedimos la mariscada para compartir y fue espectacular."</blockquote>
+        <figcaption class="text-sm"><span class="font-semibold">Carolina P.</span><span class="text-charcoal/40"> · Google</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA FINAL + FOOTER — reserva + horario + ubicación.
+     ============================================================ -->
+<section class="relative py-28 md:py-36 overflow-hidden">
+  <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1920&q=80&auto=format&fit=crop" alt="" class="absolute inset-0 w-full h-full object-cover"/>
+  <div class="absolute inset-0 bg-charcoal/85"></div>
+  <div class="relative z-10 max-w-2xl mx-auto px-6 text-center text-cream">
+    <h2 class="font-serif text-4xl md:text-6xl mb-6">Tu mesa con vistas al mar te espera</h2>
+    <p class="text-cream/70 text-lg mb-9">Abrimos de martes a domingo. Reserva online en segundos.</p>
+    <button onclick="openReserve()" class="btn-ember px-10 py-4 rounded-full font-semibold text-lg">Reservar mesa</button>
+  </div>
+</section>
+
+<footer class="bg-charcoal text-cream/70 py-14">
+  <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-10">
+    <div>
+      <p class="font-serif text-2xl text-cream mb-3">Brasa <span class="text-gold">&amp;</span> Mar</p>
+      <p class="text-sm">Cocina canaria de autor a la brasa.<br/>Tenerife, Islas Canarias.</p>
+    </div>
+    <div>
+      <p class="text-cream font-semibold mb-3 text-sm uppercase tracking-wider">Horario</p>
+      <ul class="text-sm space-y-1">
+        <li class="flex justify-between"><span>Mar – Jue</span><span>13:00 – 23:00</span></li>
+        <li class="flex justify-between"><span>Vie – Sáb</span><span>13:00 – 00:30</span></li>
+        <li class="flex justify-between"><span>Domingo</span><span>13:00 – 17:00</span></li>
+        <li class="flex justify-between text-cream/40"><span>Lunes</span><span>Cerrado</span></li>
+      </ul>
+    </div>
+    <div>
+      <p class="text-cream font-semibold mb-3 text-sm uppercase tracking-wider">Reservas</p>
+      <button onclick="openReserve()" class="btn-ember px-6 py-3 rounded-full text-sm font-semibold w-full">Reservar una mesa</button>
+      <p class="text-xs text-cream/40 mt-4">Hecho por Santipulse · Demo</p>
+    </div>
+  </div>
+</footer>
+
+<!-- Botón flotante de reserva (siempre visible) -->
+<button onclick="openReserve()" class="float-cta fixed bottom-6 right-6 z-40 btn-ember px-6 py-4 rounded-full font-semibold flex items-center gap-2">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+  Reservar
+</button>
+
+<!-- ============================================================
+     MODAL DE RESERVA (demo) — recoge fecha/hora/personas/contacto.
+     En producción esto conecta con tu backend (Supabase) y el
+     restaurante ve la reserva al instante.
+     ============================================================ -->
+<div id="reserveModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 modal-backdrop">
+  <div class="bg-cream text-charcoal rounded-3xl w-full max-w-md p-8 relative">
+    <button onclick="closeReserve()" class="absolute top-5 right-5 text-charcoal/50 hover:text-charcoal" aria-label="Cerrar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <p class="text-ember uppercase tracking-[0.3em] text-xs mb-2">Reserva</p>
+    <h3 class="font-serif text-3xl mb-6">Reserva tu mesa</h3>
+    <form id="reserveForm" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <input required type="date" class="border border-charcoal/20 rounded-xl px-4 py-3 bg-white focus:outline-none focus:border-ember" />
+        <select class="border border-charcoal/20 rounded-xl px-4 py-3 bg-white focus:outline-none focus:border-ember">
+          <option>13:00</option><option>14:00</option><option>20:00</option><option>21:00</option><option>22:00</option>
+        </select>
+      </div>
+      <select class="w-full border border-charcoal/20 rounded-xl px-4 py-3 bg-white focus:outline-none focus:border-ember">
+        <option>2 personas</option><option>3 personas</option><option>4 personas</option><option>5+ personas</option>
+      </select>
+      <input required type="text" placeholder="Tu nombre" class="w-full border border-charcoal/20 rounded-xl px-4 py-3 bg-white focus:outline-none focus:border-ember" />
+      <input required type="tel" placeholder="Teléfono" class="w-full border border-charcoal/20 rounded-xl px-4 py-3 bg-white focus:outline-none focus:border-ember" />
+      <button type="submit" class="btn-ember w-full py-4 rounded-xl font-semibold">Confirmar reserva</button>
+    </form>
+    <div id="reserveOk" class="hidden text-center py-6">
+      <div class="text-5xl mb-3">✓</div>
+      <p class="font-serif text-2xl mb-1">¡Mesa reservada!</p>
+      <p class="text-charcoal/60 text-sm">Te enviamos la confirmación. ¡Te esperamos!</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== Datos de la carta (demo). En producción vendría de tu CMS/Supabase. =====
+  const DISHES = [
+    { cat:'entrantes', name:'Carpaccio de gamba roja', desc:'Gamba roja de Tenerife, AOVE y flor de sal.', price:'18', img:'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80&auto=format&fit=crop' },
+    { cat:'entrantes', name:'Queso asado con mojo', desc:'Queso canario a la plancha con mojo de cilantro.', price:'9', img:'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=600&q=80&auto=format&fit=crop' },
+    { cat:'mar', name:'Pulpo a la brasa', desc:'Pulpo del Atlántico, papas y pimentón de la Vera.', price:'22', img:'https://images.unsplash.com/photo-1565299507177-b0ac66763828?w=600&q=80&auto=format&fit=crop' },
+    { cat:'mar', name:'Mariscada Brasa & Mar', desc:'Gamba roja, cigala, bogavante y percebes.', price:'48', img:'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=600&q=80&auto=format&fit=crop' },
+    { cat:'brasa', name:'Chuletón canario', desc:'Madurado 40 días, a la brasa de leña. 1kg.', price:'52', img:'https://images.unsplash.com/photo-1546964124-0cce460f38ef?w=600&q=80&auto=format&fit=crop' },
+    { cat:'brasa', name:'Lubina a la espalda', desc:'Lubina salvaje abierta a la brasa con ajada.', price:'24', img:'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&q=80&auto=format&fit=crop' },
+    { cat:'postres', name:'Bienmesabe', desc:'Postre tradicional de almendra y miel de palma.', price:'6', img:'https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=600&q=80&auto=format&fit=crop' },
+    { cat:'postres', name:'Tarta de queso al horno', desc:'Cremosa por dentro, dorada por fuera.', price:'7', img:'https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=600&q=80&auto=format&fit=crop' },
+  ];
+
+  // Render de platos con filtro por categoría
+  const grid = document.getElementById('menuGrid');
+  function renderMenu(cat='todos') {
+    const items = cat==='todos' ? DISHES : DISHES.filter(d=>d.cat===cat);
+    grid.innerHTML = items.map(d=>`
+      <article class="dish bg-white/5 border border-white/10 rounded-2xl overflow-hidden group">
+        <div class="overflow-hidden aspect-[4/3]">
+          <img src="${d.img}" alt="${d.name}" class="w-full h-full object-cover"/>
+        </div>
+        <div class="p-6">
+          <div class="flex items-baseline justify-between gap-3">
+            <h3 class="font-serif text-xl text-cream">${d.name}</h3>
+            <span class="font-serif text-xl text-gold whitespace-nowrap">${d.price}€</span>
+          </div>
+          <p class="text-cream/55 text-sm mt-2 leading-relaxed">${d.desc}</p>
+        </div>
+      </article>`).join('');
+    // re-observar para animación
+    grid.querySelectorAll('.dish').forEach(el=>{ el.classList.add('reveal'); io.observe(el); });
+  }
+
+  // Tabs de categoría
+  document.querySelectorAll('.menu-tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.menu-tab').forEach(t=>{
+        t.classList.remove('border-gold/50','text-gold','bg-gold/10');
+        t.classList.add('border-white/15','text-cream/70');
+      });
+      tab.classList.add('border-gold/50','text-gold','bg-gold/10');
+      tab.classList.remove('border-white/15','text-cream/70');
+      renderMenu(tab.dataset.cat);
+    });
+  });
+
+  // ===== Reveal on scroll =====
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold:.12 });
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+  // ===== Navbar sólido al hacer scroll =====
+  const nav = document.getElementById('nav');
+  addEventListener('scroll', ()=> nav.classList.toggle('solid', scrollY>60));
+
+  // ===== Modal de reserva =====
+  const modal = document.getElementById('reserveModal');
+  function openReserve(){ modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.classList.add('no-scroll'); }
+  function closeReserve(){ modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.classList.remove('no-scroll');
+    document.getElementById('reserveForm').classList.remove('hidden'); document.getElementById('reserveOk').classList.add('hidden'); }
+  modal.addEventListener('click', e=>{ if(e.target===modal) closeReserve(); });
+  addEventListener('keydown', e=>{ if(e.key==='Escape') closeReserve(); });
+  document.getElementById('reserveForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    document.getElementById('reserveForm').classList.add('hidden');
+    document.getElementById('reserveOk').classList.remove('hidden');
+  });
+
+  // init
+  renderMenu();
+</script>
+</body>
+</html>

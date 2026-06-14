@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="IRON & BLADE — barbería de caballeros en Tenerife. Cortes, barba y afeitado a navaja. Reserva tu cita." />
+<title>IRON &amp; BLADE · Barbería en Tenerife</title>
+
+<!-- ============================================================
+     ESTILO BARBERÍA: masculino, nítido, oscuro. Tipografía de impacto
+     (Oswald/Bebas) + acento cobre. Hero en VÍDEO de barbería real.
+     Estructura: Hero → Sobre → Servicios → Galería (antes/después) →
+     Testimonios → CTA reserva.
+     ============================================================ -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        ink: '#0C0C0D',        // negro carbón
+        steel: '#16181C',      // gris acero (paneles)
+        copper: '#C2703D',     // cobre (acento cálido masculino)
+        bone: '#E8E4DC',       // hueso (texto claro)
+      },
+      fontFamily: {
+        display: ['Oswald','Impact','sans-serif'],
+        head: ['"Bebas Neue"','Impact','sans-serif'],
+        body: ['Inter','system-ui','sans-serif'],
+      },
+    }},
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family:'Inter',sans-serif; background:#0C0C0D; color:#E8E4DC; }
+  .font-display{font-family:'Oswald',sans-serif;} .font-head{font-family:'Bebas Neue',sans-serif;}
+
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity .9s ease,transform .9s ease;}
+  .reveal.in{opacity:1;transform:none;}
+
+  /* Hero scrim + textura sutil */
+  .hero-scrim{background:linear-gradient(180deg,rgba(12,12,13,.55),rgba(12,12,13,.4) 45%,rgba(12,12,13,.95));}
+
+  /* Botón cobre con bisel */
+  .btn-copper{background:#C2703D;color:#0C0C0D;font-weight:600;letter-spacing:.05em;transition:all .3s ease;box-shadow:0 8px 24px rgba(194,112,61,.3);}
+  .btn-copper:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(194,112,61,.5);}
+  .btn-line{border:1px solid rgba(232,228,220,.35);color:#E8E4DC;transition:all .3s ease;}
+  .btn-line:hover{border-color:#C2703D;color:#C2703D;}
+
+  /* Línea diagonal decorativa */
+  .slash::before{content:'';display:inline-block;width:40px;height:2px;background:#C2703D;margin-right:14px;vertical-align:middle;}
+
+  /* Servicios: borde que se ilumina */
+  .svc{border:1px solid rgba(232,228,220,.1);transition:all .35s ease;}
+  .svc:hover{border-color:#C2703D;background:rgba(194,112,61,.06);transform:translateY(-4px);}
+
+  /* Antes/después slider */
+  .ba-wrap{position:relative;overflow:hidden;border-radius:14px;cursor:ew-resize;}
+  .ba-after{position:absolute;inset:0;overflow:hidden;width:50%;}
+  .ba-handle{position:absolute;top:0;bottom:0;width:3px;background:#C2703D;left:50%;transform:translateX(-50%);}
+  .ba-handle::after{content:'⇆';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#C2703D;color:#0C0C0D;width:36px;height:36px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+
+  #nav{transition:background .4s,box-shadow .4s;}
+  #nav.solid{background:rgba(12,12,13,.92);backdrop-filter:blur(12px);box-shadow:0 4px 30px rgba(0,0,0,.5);}
+
+  .float-cta{animation:fp 3s ease-in-out infinite;}
+  @keyframes fp{0%,100%{box-shadow:0 10px 30px rgba(194,112,61,.4);}50%{box-shadow:0 10px 42px rgba(194,112,61,.75);}}
+  .no-scroll{overflow:hidden;} .modal-backdrop{background:rgba(12,12,13,.85);backdrop-filter:blur(8px);}
+
+  /* Poste de barbero animado (detalle de marca) */
+  .pole{background:repeating-linear-gradient(45deg,#C2703D 0 10px,#E8E4DC 10px 20px,#16181C 20px 30px);background-size:100% 42px;animation:poleMove 1.2s linear infinite;}
+  @keyframes poleMove{to{background-position:0 42px;}}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav id="nav" class="fixed top-0 inset-x-0 z-50 py-5">
+  <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+    <a href="#inicio" class="font-head text-3xl tracking-wider text-bone">IRON<span class="text-copper"> &amp; </span>BLADE</a>
+    <ul class="hidden md:flex items-center gap-9 text-sm font-display uppercase tracking-wider text-bone/80">
+      <li><a href="#sobre" class="hover:text-copper transition">La barbería</a></li>
+      <li><a href="#servicios" class="hover:text-copper transition">Servicios</a></li>
+      <li><a href="#trabajo" class="hover:text-copper transition">Trabajo</a></li>
+      <li><a href="#opiniones" class="hover:text-copper transition">Opiniones</a></li>
+    </ul>
+    <button onclick="openBook()" class="btn-copper px-6 py-2.5 rounded-sm text-sm uppercase">Reservar</button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO — VÍDEO de barbería (corte/navaja). Stock Mixkit/Coverr.
+     Sustituir por tu vídeo: 10-15s del barbero trabajando, en
+     horizontal, bien iluminado. Poster = primera imagen para carga.
+     ============================================================ -->
+<header id="inicio" class="relative h-screen min-h-[640px] flex items-center overflow-hidden">
+  <video class="absolute inset-0 w-full h-full object-cover" autoplay muted loop playsinline
+    poster="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1920&q=80&auto=format&fit=crop">
+    <source src="https://assets.mixkit.co/videos/preview/mixkit-barber-cutting-a-clients-hair-with-scissors-44851-large.mp4" type="video/mp4" />
+    <source src="https://assets.mixkit.co/videos/preview/mixkit-man-getting-his-beard-trimmed-44853-large.mp4" type="video/mp4" />
+  </video>
+  <div class="absolute inset-0 hero-scrim"></div>
+
+  <div class="relative z-10 max-w-7xl mx-auto px-6 w-full">
+    <div class="max-w-2xl">
+      <p class="font-display uppercase tracking-[0.3em] text-copper text-xs md:text-sm mb-5 reveal slash">Barbería de caballeros · Tenerife</p>
+      <h1 class="font-head text-bone text-6xl md:text-8xl lg:text-9xl leading-[0.9] mb-6 reveal">
+        Estilo que<br/><span class="text-copper">se respeta</span>
+      </h1>
+      <p class="text-bone/80 text-lg md:text-xl max-w-lg mb-9 reveal">
+        Cortes a medida, barba perfilada y afeitado a navaja. Sin prisas, sin imitaciones. Solo oficio.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 reveal">
+        <button onclick="openBook()" class="btn-copper px-9 py-4 rounded-sm uppercase tracking-wide">Reservar cita</button>
+        <a href="#servicios" class="btn-line px-9 py-4 rounded-sm uppercase tracking-wide font-display">Ver servicios</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- poste de barbero decorativo -->
+  <div class="hidden lg:block absolute right-10 top-1/2 -translate-y-1/2 w-3 h-44 rounded-full pole z-10 reveal"></div>
+</header>
+
+<!-- SOBRE -->
+<section id="sobre" class="py-24 md:py-32">
+  <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-14 items-center">
+    <div class="reveal order-2 md:order-1">
+      <p class="font-display uppercase tracking-[0.3em] text-copper text-xs mb-4 slash">La casa</p>
+      <h2 class="font-head text-5xl md:text-6xl mb-6 leading-none">Más que un corte.<br/>Un ritual.</h2>
+      <p class="text-bone/70 text-lg leading-relaxed mb-5">
+        En Iron &amp; Blade no cortamos a destajo. Cada cliente tiene su tiempo, su silla y su café. Trabajamos con producto premium y técnica clásica.
+      </p>
+      <p class="text-bone/70 text-lg leading-relaxed mb-8">
+        Fades milimétricos, barbas esculpidas y el afeitado a navaja de toda la vida. Sales con la cabeza alta.
+      </p>
+      <div class="flex gap-10">
+        <div><p class="font-head text-5xl text-copper">12</p><p class="text-xs uppercase tracking-widest text-bone/50">años de oficio</p></div>
+        <div><p class="font-head text-5xl text-copper">9K+</p><p class="text-xs uppercase tracking-widest text-bone/50">cortes</p></div>
+        <div><p class="font-head text-5xl text-copper">5.0</p><p class="text-xs uppercase tracking-widest text-bone/50">en Google</p></div>
+      </div>
+    </div>
+    <div class="reveal order-1 md:order-2">
+      <img src="https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=900&q=80&auto=format&fit=crop" alt="Barbero trabajando" class="rounded-2xl w-full object-cover aspect-[4/5]"/>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS -->
+<section id="servicios" class="py-24 md:py-32 bg-steel">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-16 reveal">
+      <p class="font-display uppercase tracking-[0.3em] text-copper text-xs mb-4">Carta de servicios</p>
+      <h2 class="font-head text-5xl md:text-6xl">Lo que hacemos</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5">
+      <!-- cada servicio: nombre, descripción, duración, precio -->
+      <div class="svc rounded-xl p-7 flex justify-between items-start reveal">
+        <div><h3 class="font-display text-2xl uppercase">Corte de pelo</h3><p class="text-bone/55 text-sm mt-1">Lavado, corte a tijera/máquina y peinado.</p><p class="text-bone/35 text-xs uppercase tracking-wider mt-2">30 min</p></div>
+        <span class="font-head text-3xl text-copper">14€</span>
+      </div>
+      <div class="svc rounded-xl p-7 flex justify-between items-start reveal">
+        <div><h3 class="font-display text-2xl uppercase">Corte + Barba</h3><p class="text-bone/55 text-sm mt-1">El combo completo. Corte y barba perfilada.</p><p class="text-bone/35 text-xs uppercase tracking-wider mt-2">45 min · El más pedido</p></div>
+        <span class="font-head text-3xl text-copper">24€</span>
+      </div>
+      <div class="svc rounded-xl p-7 flex justify-between items-start reveal">
+        <div><h3 class="font-display text-2xl uppercase">Afeitado a navaja</h3><p class="text-bone/55 text-sm mt-1">Toalla caliente, navaja y bálsamo. Puro ritual.</p><p class="text-bone/35 text-xs uppercase tracking-wider mt-2">30 min</p></div>
+        <span class="font-head text-3xl text-copper">18€</span>
+      </div>
+      <div class="svc rounded-xl p-7 flex justify-between items-start reveal">
+        <div><h3 class="font-display text-2xl uppercase">Arreglo de barba</h3><p class="text-bone/55 text-sm mt-1">Perfilado, definición y aceite hidratante.</p><p class="text-bone/35 text-xs uppercase tracking-wider mt-2">20 min</p></div>
+        <span class="font-head text-3xl text-copper">12€</span>
+      </div>
+    </div>
+    <div class="text-center mt-12 reveal">
+      <button onclick="openBook()" class="btn-copper px-9 py-4 rounded-sm uppercase tracking-wide">Reservar mi cita</button>
+    </div>
+  </div>
+</section>
+
+<!-- TRABAJO — antes/después interactivo + galería -->
+<section id="trabajo" class="py-24 md:py-32">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 reveal">
+      <p class="font-display uppercase tracking-[0.3em] text-copper text-xs mb-4">Nuestro trabajo</p>
+      <h2 class="font-head text-5xl md:text-6xl">El antes y el después</h2>
+      <p class="text-bone/55 mt-4">Arrastra el control para ver la transformación.</p>
+    </div>
+
+    <!-- Antes/Después (arrastra) -->
+    <div class="ba-wrap aspect-[16/9] max-w-3xl mx-auto mb-16 reveal" id="ba">
+      <img src="https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1200&q=80&auto=format&fit=crop" alt="Después" class="w-full h-full object-cover"/>
+      <div class="ba-after"><img src="https://images.unsplash.com/photo-1605497788044-5a32c7078486?w=1200&q=80&auto=format&fit=crop" alt="Antes" class="w-full h-full object-cover"/></div>
+      <div class="ba-handle" id="baHandle"></div>
+      <span class="absolute top-3 left-3 text-xs font-display uppercase tracking-wider bg-ink/70 px-3 py-1 rounded">Antes</span>
+      <span class="absolute top-3 right-3 text-xs font-display uppercase tracking-wider bg-copper text-ink px-3 py-1 rounded">Después</span>
+    </div>
+
+    <!-- Galería -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <img class="rounded-xl object-cover aspect-square reveal" src="https://images.unsplash.com/photo-1622286342621-4bd786c2447c?w=500&q=80&auto=format&fit=crop" alt="Corte"/>
+      <img class="rounded-xl object-cover aspect-square reveal" src="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=500&q=80&auto=format&fit=crop" alt="Barba"/>
+      <img class="rounded-xl object-cover aspect-square reveal" src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=500&q=80&auto=format&fit=crop" alt="Fade"/>
+      <img class="rounded-xl object-cover aspect-square reveal" src="https://images.unsplash.com/photo-1493256338651-d82f7acb2b38?w=500&q=80&auto=format&fit=crop" alt="Estilo"/>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIOS -->
+<section id="opiniones" class="py-24 md:py-32 bg-steel">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 reveal">
+      <p class="font-display uppercase tracking-[0.3em] text-copper text-xs mb-4">Opiniones</p>
+      <h2 class="font-head text-5xl md:text-6xl">Clientes de por vida</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-6">
+      <figure class="bg-ink rounded-2xl p-8 reveal"><div class="text-copper mb-4">★★★★★</div><blockquote class="text-bone/75 italic leading-relaxed mb-6">"El mejor fade de la isla. Llevo 3 años y no me corto el pelo en ningún otro sitio."</blockquote><figcaption class="font-display uppercase text-sm tracking-wide">David M.</figcaption></figure>
+      <figure class="bg-ink rounded-2xl p-8 reveal"><div class="text-copper mb-4">★★★★★</div><blockquote class="text-bone/75 italic leading-relaxed mb-6">"El afeitado a navaja es otro nivel. Reservé desde el móvil en 30 segundos."</blockquote><figcaption class="font-display uppercase text-sm tracking-wide">Airam G.</figcaption></figure>
+      <figure class="bg-ink rounded-2xl p-8 reveal"><div class="text-copper mb-4">★★★★★</div><blockquote class="text-bone/75 italic leading-relaxed mb-6">"Trato de diez, ambiente top y resultado impecable. Muy recomendable."</blockquote><figcaption class="font-display uppercase text-sm tracking-wide">Jonay P.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="relative py-28 md:py-36 overflow-hidden">
+  <img src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1920&q=80&auto=format&fit=crop" alt="" class="absolute inset-0 w-full h-full object-cover"/>
+  <div class="absolute inset-0 bg-ink/85"></div>
+  <div class="relative z-10 max-w-2xl mx-auto px-6 text-center">
+    <h2 class="font-head text-5xl md:text-7xl mb-6">Tu silla te espera</h2>
+    <p class="text-bone/70 text-lg mb-9">Reserva online y elige tu barbero, día y hora.</p>
+    <button onclick="openBook()" class="btn-copper px-10 py-4 rounded-sm uppercase tracking-wide text-lg">Reservar cita</button>
+  </div>
+</section>
+
+<footer class="bg-ink text-bone/60 py-14 border-t border-bone/10">
+  <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-10">
+    <div><p class="font-head text-3xl text-bone tracking-wider">IRON <span class="text-copper">&amp;</span> BLADE</p><p class="text-sm mt-2">Barbería de caballeros.<br/>Tenerife, Islas Canarias.</p></div>
+    <div><p class="font-display uppercase text-bone text-sm tracking-wider mb-3">Horario</p><ul class="text-sm space-y-1"><li class="flex justify-between"><span>Lun – Vie</span><span>09:00 – 21:00</span></li><li class="flex justify-between"><span>Sábado</span><span>09:00 – 16:00</span></li><li class="flex justify-between text-bone/40"><span>Domingo</span><span>Cerrado</span></li></ul></div>
+    <div><p class="font-display uppercase text-bone text-sm tracking-wider mb-3">Reservas</p><button onclick="openBook()" class="btn-copper px-6 py-3 rounded-sm text-sm uppercase w-full">Reservar cita</button><p class="text-xs text-bone/40 mt-4">Hecho por Santipulse · Demo</p></div>
+  </div>
+</footer>
+
+<button onclick="openBook()" class="float-cta fixed bottom-6 right-6 z-40 btn-copper px-6 py-4 rounded-full uppercase tracking-wide flex items-center gap-2">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Reservar
+</button>
+
+<!-- MODAL RESERVA -->
+<div id="bookModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 modal-backdrop">
+  <div class="bg-steel rounded-2xl w-full max-w-md p-8 relative border border-bone/10">
+    <button onclick="closeBook()" class="absolute top-5 right-5 text-bone/50 hover:text-bone" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <p class="font-display uppercase tracking-[0.3em] text-copper text-xs mb-2">Reserva</p>
+    <h3 class="font-head text-4xl mb-6">Pide tu cita</h3>
+    <form id="bookForm" class="space-y-4">
+      <select class="w-full bg-ink border border-bone/15 rounded-lg px-4 py-3 focus:outline-none focus:border-copper"><option>Corte de pelo · 14€</option><option>Corte + Barba · 24€</option><option>Afeitado a navaja · 18€</option><option>Arreglo de barba · 12€</option></select>
+      <div class="grid grid-cols-2 gap-3">
+        <input required type="date" class="bg-ink border border-bone/15 rounded-lg px-4 py-3 focus:outline-none focus:border-copper"/>
+        <select class="bg-ink border border-bone/15 rounded-lg px-4 py-3 focus:outline-none focus:border-copper"><option>10:00</option><option>11:30</option><option>17:00</option><option>18:30</option></select>
+      </div>
+      <input required type="text" placeholder="Tu nombre" class="w-full bg-ink border border-bone/15 rounded-lg px-4 py-3 focus:outline-none focus:border-copper"/>
+      <input required type="tel" placeholder="Teléfono" class="w-full bg-ink border border-bone/15 rounded-lg px-4 py-3 focus:outline-none focus:border-copper"/>
+      <button type="submit" class="btn-copper w-full py-4 rounded-lg uppercase tracking-wide">Confirmar cita</button>
+    </form>
+    <div id="bookOk" class="hidden text-center py-6"><div class="text-5xl mb-3 text-copper">✓</div><p class="font-head text-3xl mb-1">¡Cita reservada!</p><p class="text-bone/60 text-sm">Te esperamos. Confirmación enviada.</p></div>
+  </div>
+</div>
+
+<script>
+  // Reveal on scroll
+  const io = new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  // Nav solid
+  const nav=document.getElementById('nav'); addEventListener('scroll',()=>nav.classList.toggle('solid',scrollY>60));
+  // Modal
+  const m=document.getElementById('bookModal');
+  function openBook(){m.classList.remove('hidden');m.classList.add('flex');document.body.classList.add('no-scroll');}
+  function closeBook(){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('no-scroll');document.getElementById('bookForm').classList.remove('hidden');document.getElementById('bookOk').classList.add('hidden');}
+  m.addEventListener('click',e=>{if(e.target===m)closeBook();}); addEventListener('keydown',e=>{if(e.key==='Escape')closeBook();});
+  document.getElementById('bookForm').addEventListener('submit',e=>{e.preventDefault();document.getElementById('bookForm').classList.add('hidden');document.getElementById('bookOk').classList.remove('hidden');});
+
+  // Antes/Después: arrastrar
+  (function(){
+    const wrap=document.getElementById('ba'), after=wrap.querySelector('.ba-after'), handle=document.getElementById('baHandle');
+    let dragging=false;
+    const move=(x)=>{const r=wrap.getBoundingClientRect();let p=(x-r.left)/r.width;p=Math.max(0,Math.min(1,p));after.style.width=(p*100)+'%';handle.style.left=(p*100)+'%';};
+    wrap.addEventListener('mousedown',e=>{dragging=true;move(e.clientX);});
+    addEventListener('mousemove',e=>{if(dragging)move(e.clientX);}); addEventListener('mouseup',()=>dragging=false);
+    wrap.addEventListener('touchstart',e=>move(e.touches[0].clientX),{passive:true});
+    wrap.addEventListener('touchmove',e=>move(e.touches[0].clientX),{passive:true});
+  })();
+</script>
+</body>
+</html>
