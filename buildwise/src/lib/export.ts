@@ -9,6 +9,7 @@
  */
 
 import { DISCIPLINES, PROJECT_TYPES, formatUSD, type Answers, type ProjectPackage } from '../interview/engine'
+import { generatePlanSVG, hasPlanDrawing } from './drawing'
 
 function triggerDownload(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -59,6 +60,22 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
 
   const highlights = pkg.highlights.map((h) => `<li>${esc(h)}</li>`).join('')
 
+  const planSVG = hasPlanDrawing(pkg) ? generatePlanSVG(answers, pkg) : ''
+
+  const scheduleRows = (pkg.schedule ?? [])
+    .map(
+      (ph, i) =>
+        `<tr><td class="num">${String(i + 1).padStart(2, '0')}</td><td><strong>${esc(ph.name)}</strong><br/><span class="sub">${esc(ph.items.join(' · '))}</span></td><td class="qty">${ph.weeks} wk${ph.weeks > 1 ? 's' : ''}</td></tr>`,
+    )
+    .join('')
+
+  const costRows = (pkg.costBreakdown ?? [])
+    .map(
+      (c) =>
+        `<tr><td>${esc(DISCIPLINES[c.discipline].name)}</td><td class="qty">${formatUSD(c.low)}–${formatUSD(c.high)}</td></tr>`,
+    )
+    .join('')
+
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -87,7 +104,10 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
   th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
-  td.qty{text-align:right;font-variant-numeric:tabular-nums;color:#475569;}
+  td.qty{text-align:right;font-variant-numeric:tabular-nums;color:#475569;white-space:nowrap;}
+  td.num{color:var(--muted);font-variant-numeric:tabular-nums;width:32px;}
+  .sub{color:var(--muted);font-size:12px;}
+  .plan{border:1px solid var(--line);border-radius:12px;overflow:hidden;} .plan svg{display:block;width:100%;height:auto;}
   .note{margin-top:28px;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:16px;font-size:13px;color:#92400e;}
   footer{margin-top:40px;border-top:1px solid var(--line);padding-top:16px;font-size:11px;color:var(--muted);}
   @media print{body{background:#fff;} .page{padding:0;} .no-print{display:none;}}
@@ -110,11 +130,17 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
 
   ${highlights ? `<h2>Highlights</h2><ul class="hl">${highlights}</ul>` : ''}
 
+  ${planSVG ? `<h2>Draft plan drawing</h2><div class="plan">${planSVG}</div>` : ''}
+
+  ${scheduleRows ? `<h2>Build schedule</h2><table><tbody>${scheduleRows}</tbody></table>` : ''}
+
   <h2>Deliverables</h2>
   ${deliverables}
 
   <h2>Material list</h2>
   <table><thead><tr><th>Category</th><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>${materialRows}</tbody></table>
+
+  ${costRows ? `<h2>Cost breakdown by discipline</h2><table><tbody>${costRows}</tbody></table>` : ''}
 
   <div class="note"><strong>Professional review:</strong> ${esc(pkg.permitNote)}</div>
 

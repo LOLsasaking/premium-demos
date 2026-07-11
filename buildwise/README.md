@@ -21,10 +21,16 @@ package generator, wrapped in a polished product site.
 - **Upload anything** — floor plans, photos, Zillow screenshots, sketches, PDFs, CAD.
   (The local demo simulates vision; real Claude vision ships in `server/`.)
 - **Live package generation** — deliverables per discipline, a material list with
-  quantities, a cost band, a timeline, and a permit/review note — computed by a
-  transparent construction rules engine (or by Claude when the backend is on).
+  quantities, a **phased build schedule**, a cost band with **per-discipline
+  breakdown**, and a permit/review note — computed by a transparent construction
+  rules engine (or by Claude when the backend is on).
+- **Generated draft plan drawings** — a blueprint-style SVG plan sheet with
+  dimensioned walls, receptacles spaced per NEC 210.52, a recessed-lighting grid,
+  panel, EV charger, plumbing fixtures, HVAC registers, legend and title block —
+  drawn deterministically from the interview answers.
 - **Download your package** — export a polished, **print-to-PDF construction
-  document** or a JSON handoff for CAD/BIM, entirely in the browser.
+  document** (drawing and schedule included) or a JSON handoff for CAD/BIM,
+  entirely in the browser.
 - **Saved projects** — every generated package is saved locally; reopen or delete
   past projects from the studio.
 - **Digital-twin teaser** — an interactive room where you toggle lights, electrical
@@ -45,6 +51,7 @@ No API keys required — the interview and package generation run entirely in th
 browser on a deterministic rules engine.
 
 ```bash
+npm test         # engine + drawing unit tests (vitest)
 npm run build    # type-check + production build to dist/
 npm run preview  # preview the production build
 ```
@@ -61,13 +68,17 @@ npm run preview  # preview the production build
 Key files:
 
 - `src/interview/engine.ts` — the interview questions, branching logic, free-text
-  matcher, and the `generatePackage()` function. **This is the brain.** The `Answers`
-  and `ProjectPackage` types are the contract the UI depends on.
+  matcher, and the `generatePackage()` function (deliverables, materials, schedule,
+  cost breakdown). **This is the brain.** The `Answers` and `ProjectPackage` types
+  are the contract the UI depends on.
+- `src/lib/drawing.ts` — the draft plan drawing generator (SVG string, shared by
+  the app and the export).
 - `src/lib/ai.ts` — the integration seam. Calls the real backend when configured,
   falls back to the local engine on any error.
 - `src/lib/store.ts` — localStorage project persistence.
 - `src/lib/export.ts` — the printable HTML + JSON package export.
 - `src/components/InterviewStudio.tsx` — the interactive chat + upload + results.
+- `src/interview/engine.test.ts` — unit tests for the engine and drawings.
 - `server/` — the optional Claude-backed API.
 
 ## Plugging in real AI (Claude)

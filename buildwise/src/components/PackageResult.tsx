@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Icon from './Icon'
 import { DISCIPLINES, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
 import { exportHTML, exportJSON } from '../lib/export'
+import { generatePlanSVG, hasPlanDrawing } from '../lib/drawing'
 
 export default function PackageResult({
   pkg,
@@ -13,7 +14,13 @@ export default function PackageResult({
   onRestart: () => void
 }) {
   const [openMaterials, setOpenMaterials] = useState(false)
+  const [openCosts, setOpenCosts] = useState(false)
   const [exported, setExported] = useState(false)
+
+  const planSVG = useMemo(
+    () => (hasPlanDrawing(pkg) ? generatePlanSVG(answers, pkg) : null),
+    [answers, pkg],
+  )
 
   function handleExport() {
     exportHTML(answers, pkg)
@@ -52,6 +59,38 @@ export default function PackageResult({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Draft plan drawing */}
+      {planSVG && (
+        <>
+          <h4 className="mt-6 text-xs font-600 uppercase tracking-wider text-muted">Draft plan preview</h4>
+          <div
+            className="mt-3 overflow-hidden rounded-xl border border-line [&>svg]:block [&>svg]:w-full"
+            dangerouslySetInnerHTML={{ __html: planSVG }}
+          />
+        </>
+      )}
+
+      {/* Build schedule */}
+      {pkg.schedule && pkg.schedule.length > 0 && (
+        <>
+          <h4 className="mt-6 text-xs font-600 uppercase tracking-wider text-muted">Build schedule</h4>
+          <div className="mt-3 space-y-1.5">
+            {pkg.schedule.map((ph, i) => (
+              <div key={ph.name} className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2">
+                <span className="w-6 shrink-0 font-mono text-xs text-muted">{String(i + 1).padStart(2, '0')}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-500 text-mist">{ph.name}</div>
+                  <div className="truncate text-xs text-muted">{ph.items.join(' · ')}</div>
+                </div>
+                <span className="shrink-0 rounded-md bg-blueprint/15 px-2 py-0.5 text-xs font-600 text-blueprint">
+                  {ph.weeks} wk{ph.weeks > 1 ? 's' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Deliverables per discipline */}
@@ -116,6 +155,38 @@ export default function PackageResult({
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Cost breakdown (collapsible) */}
+      {pkg.costBreakdown && pkg.costBreakdown.length > 0 && (
+        <>
+          <button
+            onClick={() => setOpenCosts((v) => !v)}
+            className="mt-2 flex w-full items-center justify-between rounded-xl border border-line bg-panel px-4 py-3 text-sm font-500 text-mist transition hover:border-blueprint"
+          >
+            <span className="flex items-center gap-2">
+              <Icon path="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" size={16} />
+              Cost breakdown by discipline
+            </span>
+            <Icon path={openCosts ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} size={16} />
+          </button>
+          {openCosts && (
+            <div className="mt-2 overflow-hidden rounded-xl border border-line">
+              <table className="w-full text-left text-sm">
+                <tbody>
+                  {pkg.costBreakdown.map((c) => (
+                    <tr key={c.discipline} className="border-b border-line last:border-0">
+                      <td className="px-4 py-2 text-mist">{DISCIPLINES[c.discipline].name}</td>
+                      <td className="px-4 py-2 text-right font-mono text-muted">
+                        {formatUSD(c.low)}–{formatUSD(c.high)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {/* Permit note */}

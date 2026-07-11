@@ -317,6 +317,20 @@ export interface MaterialLine {
   qty: string
 }
 
+/** One phase of the construction schedule. */
+export interface Phase {
+  name: string
+  weeks: number
+  items: string[]
+}
+
+/** Cost band contribution of one discipline. */
+export interface CostLine {
+  discipline: DisciplineId
+  low: number
+  high: number
+}
+
 export interface ProjectPackage {
   headline: string
   summary: string
@@ -325,12 +339,16 @@ export interface ProjectPackage {
   materials: MaterialLine[]
   costLow: number
   costHigh: number
+  /** Optional on older saved projects. */
+  costBreakdown?: CostLine[]
   timelineWeeks: [number, number]
+  /** Optional on older saved projects. */
+  schedule?: Phase[]
   permitNote: string
   highlights: string[]
 }
 
-const AREA_SQFT: Record<string, number> = { s: 120, m: 275, l: 600, xl: 1400 }
+export const AREA_SQFT: Record<string, number> = { s: 120, m: 275, l: 600, xl: 1400 }
 const AREA_LABEL: Record<string, string> = {
   s: 'under 150 sq ft',
   m: '150–400 sq ft',
@@ -440,9 +458,15 @@ function buildMaterials(a: Answers, disciplines: DisciplineId[]): MaterialLine[]
   return m
 }
 
-function estimateCost(a: Answers, disciplines: DisciplineId[]): [number, number] {
+function estimateCost(
+  a: Answers,
+  disciplines: DisciplineId[],
+): { low: number; high: number; breakdown: CostLine[] } {
   const sqft = AREA_SQFT[a.area] ?? 275
   const mult = BUDGET_MULT[a.budget] ?? 1
+  // Regional cost-of-living nudge.
+  const regionMult: Record<string, number> = { CA: 1.25, NE: 1.15, FL: 1.0, TX: 0.95, US: 1.0 }
+  const rm = regionMult[a.region] ?? 1
 
   // Rough $/sq ft baselines per discipline (design + install, US average).
   const rate: Partial<Record<DisciplineId, number>> = {
@@ -455,32 +479,96 @@ function estimateCost(a: Answers, disciplines: DisciplineId[]): [number, number]
     solar: 0, // priced as a flat system below
     smart: 8,
   }
-  let low = 0
-  for (const id of disciplines) low += (rate[id] ?? 0) * sqft
-  if (disciplines.includes('solar')) low += a.tenure === 'long' ? 26000 : 17000
 
-  low = low * mult
-  const high = low * 1.4
-  // Regional cost-of-living nudge.
-  const regionMult: Record<string, number> = { CA: 1.25, NE: 1.15, FL: 1.0, TX: 0.95, US: 1.0 }
-  const rm = regionMult[a.region] ?? 1
-  return [Math.round((low * rm) / 500) * 500, Math.round((high * rm) / 500) * 500]
+  const breakdown: CostLine[] = []
+  for (const id of disciplines) {
+    let base = (rate[id] ?? 0) * sqft
+    if (id === 'solar') base = a.tenure === 'long' ? 26000 : 17000
+    const low = Math.round((base * mult * rm) / 100) * 100
+    breakdown.push({ discipline: id, low, high: Math.round((low * 1.4) / 100) * 100 })
+  }
+  const low = Math.round(breakdown.reduce((s, l) => s + l.low, 0) / 500) * 500
+  const high = Math.round(breakdown.reduce((s, l) => s + l.high, 0) / 500) * 500
+  return { low, high, breakdown }
 }
 
-function estimateTimeline(disciplines: DisciplineId[], a: Answers): [number, number] {
-  let weeks = 3 + disciplines.length * 1.5
-  if (disciplines.includes('structural')) weeks += 3
-  if (a.area === 'xl') weeks += 4
-  if (a.area === 'l') weeks += 2
-  return [Math.round(weeks), Math.round(weeks * 1.6)]
+function buildSchedule(
+  a: Answers,
+  disciplines: DisciplineId[],
+): { phases: Phase[]; low: number; high: number } {
+  const has = (d: DisciplineId) => disciplines.includes(d)
+  const mep = has('electrical') || has('plumbing') || has('hvac')
+  const isRemodel = ['kitchen', 'bathroom', 'addition', 'adu'].includes(a.project)
+  const big = a.area === 'l' || a.area === 'xl'
+
+  const phases: Phase[] = []
+  phases.push({
+    name: 'Design & engineering',
+    weeks: has('structural') ? 3 : 2,
+    items: ['Final drawings', 'Load & sizing calcs', has('structural') ? 'Engineer review & stamp' : 'Plan check prep'],
+  })
+  phases.push({ name: 'Permits & approvals', weeks: 2, items: ['Permit submittal', 'Jurisdiction plan review'] })
+  if (isRemodel)
+    phases.push({ name: 'Demolition & prep', weeks: 1, items: ['Protection & tear-out', 'Debris removal'] })
+  if (has('structural'))
+    phases.push({
+      name: 'Foundation & framing',
+      weeks: big ? (a.area === 'xl' ? 4 : 3) : 2,
+      items: ['Footings / slab work', 'Wall & roof framing', 'Beams & headers'],
+    })
+  if (mep) {
+    const trades = ['electrical', 'plumbing', 'hvac'].filter((d) => has(d as DisciplineId))
+    phases.push({
+      name: 'MEP rough-in',
+      weeks: Math.max(1, Math.round(trades.length * 0.8)),
+      items: trades.map((t) => `${t[0].toUpperCase()}${t.slice(1)} rough-in`),
+    })
+    phases.push({ name: 'Rough inspections', weeks: 1, items: ['Trade inspections', 'Corrections'] })
+  }
+  if (has('interior')) {
+    phases.push({ name: 'Insulation & drywall', weeks: 2, items: ['Insulation', 'Hang, tape & texture'] })
+    phases.push({
+      name: 'Finishes & fixtures',
+      weeks: a.budget === 'premium' ? 3 : 2,
+      items: ['Flooring & paint', 'Cabinets & counters', 'Fixture set-out'],
+    })
+  }
+  if (has('solar'))
+    phases.push({ name: 'Solar install & interconnection', weeks: 1, items: ['Array & inverter install', 'Utility PTO'] })
+  if (has('smart'))
+    phases.push({ name: 'Smart home & low-voltage', weeks: 1, items: ['AP & camera mounting', 'Automation scenes'] })
+  phases.push({ name: 'Final inspection & punch list', weeks: 1, items: ['Final sign-off', 'Walkthrough & touch-ups'] })
+
+  const low = phases.reduce((s, p) => s + p.weeks, 0)
+  return { phases, low, high: Math.ceil(low * 1.5) }
+}
+
+/**
+ * Local stand-in for the vision endpoint: describes what the uploads likely
+ * contain from their filenames so the chat can acknowledge them. The live
+ * backend replaces this with real Claude vision (see server/claude.js).
+ */
+export function describeUploads(names: string[]): string {
+  if (names.length === 0) return ''
+  const joined = names.join(' ').toLowerCase()
+  let seen = 'photos of your space'
+  if (/floor.?plan|blueprint|\.dwg|\.dxf/.test(joined)) seen = 'a floor plan — I can work with the room layout'
+  else if (/zillow|listing|mls/.test(joined)) seen = 'a listing screenshot — I can make out the main living areas'
+  else if (/sketch|drawing|hand/.test(joined)) seen = 'a hand sketch — rough dimensions are enough to start'
+  else if (/kitchen/.test(joined)) seen = 'kitchen photos — counters, appliances and the working wall'
+  else if (/bath/.test(joined)) seen = 'bathroom photos — I can see the wet wall and fixture spots'
+  else if (/drone|roof|aerial/.test(joined)) seen = 'aerial shots — useful for the roof and solar exposure'
+  const n = names.length
+  return `Thanks — I read ${n} file${n > 1 ? 's' : ''}. Looks like ${seen}. I'll fill in what I can from the imagery and ask about the rest.`
 }
 
 export function generatePackage(a: Answers): ProjectPackage {
   const disciplines = pickDisciplines(a)
   const deliverables = buildDeliverables(a, disciplines)
   const materials = buildMaterials(a, disciplines)
-  const [costLow, costHigh] = estimateCost(a, disciplines)
-  const timelineWeeks = estimateTimeline(disciplines, a)
+  const { low: costLow, high: costHigh, breakdown: costBreakdown } = estimateCost(a, disciplines)
+  const { phases: schedule, low: weeksLow, high: weeksHigh } = buildSchedule(a, disciplines)
+  const timelineWeeks: [number, number] = [weeksLow, weeksHigh]
 
   const projectLabel = (PROJECT_TYPES as Record<string, string>)[a.project] ?? 'Project'
   const needsReview = deliverables.some((d) => d.needsReview)
@@ -502,7 +590,9 @@ export function generatePackage(a: Answers): ProjectPackage {
     materials,
     costLow,
     costHigh,
+    costBreakdown,
     timelineWeeks,
+    schedule,
     permitNote: needsReview
       ? 'Structural and long-term solar elements require review and stamping by a licensed engineer in your jurisdiction before permitting. BuildWise can route this to a vetted local pro.'
       : 'Drawings are permit-ready pending standard local plan review. BuildWise can connect you with a licensed pro to stamp where your jurisdiction requires it.',
