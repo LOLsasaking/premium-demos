@@ -1,9 +1,25 @@
 import { useState } from 'react'
 import Icon from './Icon'
-import { DISCIPLINES, type ProjectPackage, formatUSD } from '../interview/engine'
+import { DISCIPLINES, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
+import { exportHTML, exportJSON } from '../lib/export'
 
-export default function PackageResult({ pkg, onRestart }: { pkg: ProjectPackage; onRestart: () => void }) {
+export default function PackageResult({
+  pkg,
+  answers,
+  onRestart,
+}: {
+  pkg: ProjectPackage
+  answers: Answers
+  onRestart: () => void
+}) {
   const [openMaterials, setOpenMaterials] = useState(false)
+  const [exported, setExported] = useState(false)
+
+  function handleExport() {
+    exportHTML(answers, pkg)
+    setExported(true)
+    setTimeout(() => setExported(false), 2500)
+  }
 
   return (
     <div className="rounded-2xl border border-blueprint/30 bg-panel2/60 p-5">
@@ -112,9 +128,17 @@ export default function PackageResult({ pkg, onRestart }: { pkg: ProjectPackage;
 
       {/* Actions */}
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-        <a href="#pricing" className="btn-build flex-1 py-3">
-          Export the full package
-        </a>
+        <button onClick={handleExport} className="btn-build flex-1 py-3">
+          {exported ? (
+            <>
+              <Icon path="M20 6 9 17l-5-5" size={16} /> Downloaded
+            </>
+          ) : (
+            <>
+              <Icon path="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" size={16} /> Download package
+            </>
+          )}
+        </button>
         <a href="#marketplace" className="btn-ghost flex-1 py-3">
           Send to a licensed pro
         </a>
@@ -122,6 +146,12 @@ export default function PackageResult({ pkg, onRestart }: { pkg: ProjectPackage;
           <Icon path="M3 12a9 9 0 1 0 3-6.7M3 4v4h4" size={16} /> New
         </button>
       </div>
+      <button
+        onClick={() => exportJSON(answers, pkg)}
+        className="mt-2 w-full text-center text-xs text-muted transition hover:text-mist"
+      >
+        or export as JSON (for CAD / BIM handoff)
+      </button>
     </div>
   )
 }

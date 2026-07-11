@@ -244,6 +244,44 @@ const QUESTIONS: Question[] = [
   },
 ]
 
+/**
+ * Maps free-typed text to the closest choice for a question. Lets the local
+ * engine feel conversational without a live LLM. When the real backend is on,
+ * free text is passed through to Claude verbatim instead.
+ */
+export function matchChoice(q: Question, text: string): Choice | null {
+  const t = text.trim().toLowerCase()
+  if (!t) return null
+
+  // Direct hits on label / value / hint.
+  for (const c of q.choices) {
+    if (c.value.toLowerCase() === t) return c
+    if (c.label.toLowerCase() === t) return c
+  }
+  for (const c of q.choices) {
+    const hay = `${c.label} ${c.hint ?? ''}`.toLowerCase()
+    if (hay.includes(t) || t.includes(c.value.toLowerCase())) return c
+  }
+
+  // Keyword affinity — score shared word stems.
+  const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 2)
+  let best: Choice | null = null
+  let bestScore = 0
+  for (const c of q.choices) {
+    const hay = `${c.label} ${c.hint ?? ''}`.toLowerCase()
+    let score = 0
+    for (const w of words) if (hay.includes(w)) score++
+    // Common yes/no affirmations.
+    if (/(yes|yeah|yep|sure|definitely|absolutely)/.test(t) && /^(yes|full|now|long)/.test(c.value)) score += 1
+    if (/(no|nope|nah|skip|not)/.test(t) && /^(no|skip)/.test(c.value)) score += 1
+    if (score > bestScore) {
+      bestScore = score
+      best = c
+    }
+  }
+  return bestScore > 0 ? best : null
+}
+
 /** Returns the next unanswered, applicable question, or null when complete. */
 export function nextQuestion(answers: Answers): Question | null {
   for (const q of QUESTIONS) {

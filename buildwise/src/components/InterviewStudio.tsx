@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon'
 import PackageResult from './PackageResult'
+import SavedProjects from './SavedProjects'
 import { askNextQuestion, buildPackage } from '../lib/ai'
+import { listProjects, removeProject, saveProject, type SavedProject } from '../lib/store'
 import {
   type Answers,
   type Question,
   type ProjectPackage,
   answeredCount,
+  matchChoice,
   totalQuestions,
 } from '../interview/engine'
 
@@ -25,7 +28,12 @@ export default function InterviewStudio() {
   const [question, setQuestion] = useState<Question | null>(null)
   const [thinking, setThinking] = useState(false)
   const [pkg, setPkg] = useState<ProjectPackage | null>(null)
+  const [draft, setDraft] = useState('')
+  const [projects, setProjects] = useState<SavedProject[]>([])
   const scroller = useRef<HTMLDivElement>(null)
+  const savedRef = useRef(false)
+
+  useEffect(() => setProjects(listProjects()), [])
 
   const progress = useMemo(() => {
     const total = totalQuestions(answers)
@@ -39,8 +47,7 @@ export default function InterviewStudio() {
   async function advance(next: Answers) {
     setThinking(true)
     const q = await askNextQuestion(next)
-    // Small human-feeling delay for the "thinking" state.
-    await wait(650)
+    await wait(650) // human-feeling pause
     if (q) {
       setMessages((m) => [...m, { role: 'ai', text: q.prompt }])
       setQuestion(q)
@@ -55,7 +62,15 @@ export default function InterviewStudio() {
       const result = await buildPackage(next)
       setPkg(result)
       setThinking(false)
+      persist(next, result)
     }
+  }
+
+  function persist(finalAnswers: Answers, result: ProjectPackage) {
+    if (savedRef.current) return
+    savedRef.current = true
+    saveProject({ title: result.headline, attachments: attached, answers: finalAnswers, pkg: result })
+    setProjects(listProjects())
   }
 
   async function begin() {
@@ -63,15 +78,47 @@ export default function InterviewStudio() {
     await advance({})
   }
 
-  function pick(q: Question, value: string, label: string) {
+  function commit(q: Question, value: string, userText: string) {
     const next = { ...answers, [q.id]: value }
     setAnswers(next)
-    setMessages((m) => [...m, { role: 'user', text: label }])
+    setMessages((m) => [...m, { role: 'user', text: userText }])
     setQuestion(null)
+    setDraft('')
     void advance(next)
   }
 
+  function submitTyped(e: React.FormEvent) {
+    e.preventDefault()
+    if (!question || !draft.trim()) return
+    const c = matchChoice(question, draft)
+    if (c) {
+      commit(question, c.value, draft.trim())
+    } else {
+      // Couldn't map it — keep the question and gently ask again.
+      const q = question
+      setMessages((m) => [
+        ...m,
+        { role: 'user', text: draft.trim() },
+        { role: 'ai', text: "I want to get this right — could you pick one of the options below?" },
+      ])
+      setDraft('')
+      setQuestion(q)
+    }
+  }
+
+  function openSaved(p: SavedProject) {
+    savedRef.current = true
+    setStarted(true)
+    setAttached(p.attachments)
+    setAnswers(p.answers)
+    setPkg(p.pkg)
+    setQuestion(null)
+    setThinking(false)
+    setMessages([{ role: 'ai', text: `Reopened your saved ${p.pkg.headline.toLowerCase()}.` }])
+  }
+
   function reset() {
+    savedRef.current = false
     setStarted(false)
     setAttached([])
     setAnswers({})
@@ -79,6 +126,8 @@ export default function InterviewStudio() {
     setQuestion(null)
     setThinking(false)
     setPkg(null)
+    setDraft('')
+    setProjects(listProjects())
   }
 
   return (
@@ -116,6 +165,12 @@ export default function InterviewStudio() {
             {!started ? (
               <UploadPanel
                 attached={attached}
+                projects={projects}
+                onOpen={openSaved}
+                onDelete={(id) => {
+                  removeProject(id)
+                  setProjects(listProjects())
+                }}
                 onAttach={(f) => setAttached((a) => Array.from(new Set([...a, ...f])))}
                 onBegin={begin}
               />
@@ -164,29 +219,43 @@ export default function InterviewStudio() {
 
                   {thinking && <Typing />}
 
-                  {pkg && <PackageResult pkg={pkg} onRestart={reset} />}
+                  {pkg && <PackageResult pkg={pkg} answers={answers} onRestart={reset} />}
                 </div>
 
-                {/* Answer chips */}
+                {/* Answer chips + free text */}
                 {question && !thinking && (
                   <div className="border-t border-line bg-panel2 px-5 py-4">
                     <div className="flex flex-wrap gap-2">
                       {question.choices.map((c) => (
                         <button
                           key={c.value}
-                          onClick={() => pick(question, c.value, c.label)}
+                          onClick={() => commit(question, c.value, c.label)}
                           className="group rounded-xl border border-line bg-panel px-4 py-2.5 text-left text-sm transition hover:border-blueprint hover:bg-blueprint/10"
                           title={c.hint}
                         >
                           <span className="font-500 text-mist">{c.label}</span>
                           {c.hint && (
-                            <span className="ml-2 hidden text-xs text-muted group-hover:inline">
-                              {c.hint}
-                            </span>
+                            <span className="ml-2 hidden text-xs text-muted group-hover:inline">{c.hint}</span>
                           )}
                         </button>
                       ))}
                     </div>
+                    <form onSubmit={submitTyped} className="mt-3 flex items-center gap-2">
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        placeholder="…or type your answer"
+                        className="flex-1 rounded-xl border border-line bg-panel px-4 py-2.5 text-sm outline-none transition focus:border-blueprint"
+                      />
+                      <button
+                        type="submit"
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blueprint text-white transition hover:bg-blue-600 disabled:opacity-40"
+                        disabled={!draft.trim()}
+                        aria-label="Send"
+                      >
+                        <Icon path="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" size={16} />
+                      </button>
+                    </form>
                   </div>
                 )}
               </>
@@ -203,10 +272,16 @@ export default function InterviewStudio() {
 
 function UploadPanel({
   attached,
+  projects,
+  onOpen,
+  onDelete,
   onAttach,
   onBegin,
 }: {
   attached: string[]
+  projects: SavedProject[]
+  onOpen: (p: SavedProject) => void
+  onDelete: (id: string) => void
   onAttach: (files: string[]) => void
   onBegin: () => void
 }) {
@@ -272,6 +347,8 @@ function UploadPanel({
           <Icon path="M5 12h14M12 5l7 7-7 7" size={18} />
         </button>
       </div>
+
+      {projects.length > 0 && <SavedProjects projects={projects} onOpen={onOpen} onDelete={onDelete} />}
     </div>
   )
 }

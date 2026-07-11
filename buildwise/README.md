@@ -16,14 +16,21 @@ package generator, wrapped in a polished product site.
 
 - **Conversational AI interview** — no 40-field form. A branching, contractor-style
   Q&A that adapts to the answers (gas vs. all-electric, EV, solar now/later, budget,
-  how long you'll stay) and stops when it has enough.
+  how long you'll stay) and stops when it has enough. Answer by **clicking chips or
+  typing freely** — typed answers are mapped to the closest option.
 - **Upload anything** — floor plans, photos, Zillow screenshots, sketches, PDFs, CAD.
-  (The demo simulates vision; the seam for real vision is documented below.)
+  (The local demo simulates vision; real Claude vision ships in `server/`.)
 - **Live package generation** — deliverables per discipline, a material list with
   quantities, a cost band, a timeline, and a permit/review note — computed by a
-  transparent construction rules engine.
+  transparent construction rules engine (or by Claude when the backend is on).
+- **Download your package** — export a polished, **print-to-PDF construction
+  document** or a JSON handoff for CAD/BIM, entirely in the browser.
+- **Saved projects** — every generated package is saved locally; reopen or delete
+  past projects from the studio.
 - **Digital-twin teaser** — an interactive room where you toggle lights, electrical
   routing, plumbing and framing layers.
+- **Real Claude backend** — an optional Node/Express server that proxies the
+  Anthropic API for the interview, package generation and vision (see below).
 - **Marketplace, pricing & roadmap** — the platform vision, phased.
 
 ## Run it
@@ -53,27 +60,45 @@ npm run preview  # preview the production build
 
 Key files:
 
-- `src/interview/engine.ts` — the interview questions, branching logic, and the
-  `generatePackage()` function. **This is the brain.** The `Answers` and
-  `ProjectPackage` types are the contract the UI depends on.
-- `src/lib/ai.ts` — the integration seam. Swap the local engine for real Claude
-  calls here without touching the UI.
+- `src/interview/engine.ts` — the interview questions, branching logic, free-text
+  matcher, and the `generatePackage()` function. **This is the brain.** The `Answers`
+  and `ProjectPackage` types are the contract the UI depends on.
+- `src/lib/ai.ts` — the integration seam. Calls the real backend when configured,
+  falls back to the local engine on any error.
+- `src/lib/store.ts` — localStorage project persistence.
+- `src/lib/export.ts` — the printable HTML + JSON package export.
 - `src/components/InterviewStudio.tsx` — the interactive chat + upload + results.
+- `server/` — the optional Claude-backed API.
 
 ## Plugging in real AI (Claude)
 
-The MVP ships deterministic so it always demos. To go live:
+The frontend ships deterministic so it always demos. The **live backend is already
+written** in `server/` — a small Express app that proxies the Anthropic Messages API
+(`claude-opus-4-8`) and never exposes the key to the browser. It does three jobs:
 
-1. Stand up a small server route that proxies to the Anthropic Messages API with
-   `claude-opus-4-8` (or `claude-sonnet-5` for lower latency/cost). **Never call the
-   API from the browser with a raw key.**
-2. Give it two jobs — **vision** (interpret uploaded plans/photos into a structured
-   room + fixture inventory) and **reasoning** (run the interview and emit a
-   `ProjectPackage` JSON matching `engine.ts`).
-3. Set `VITE_BUILDWISE_API_URL` (see `.env.example`) and flip `USE_REMOTE` in
-   `src/lib/ai.ts`.
+- `POST /api/interview` — Claude decides the next best question,
+- `POST /api/package` — Claude emits a `ProjectPackage` JSON matching `engine.ts`,
+- `POST /api/vision` — Claude interprets uploaded floor plans / photos.
 
-Because the UI only depends on the return shapes, nothing else changes.
+Run it:
+
+```bash
+cd server
+npm install
+cp .env.example .env        # add your ANTHROPIC_API_KEY
+npm run dev                 # http://localhost:8787  (GET /health to check)
+```
+
+Then point the frontend at it and restart `npm run dev`:
+
+```bash
+# buildwise/.env
+VITE_BUILDWISE_API_URL=http://localhost:8787
+```
+
+That's the only change needed — `src/lib/ai.ts` picks it up automatically and the UI
+is untouched, because it only depends on the return shapes. If the backend is
+unreachable or errors, the app silently falls back to the local engine.
 
 ## Roadmap
 
