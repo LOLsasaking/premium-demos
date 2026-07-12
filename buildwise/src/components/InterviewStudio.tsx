@@ -3,7 +3,8 @@ import Icon from './Icon'
 import PackageResult from './PackageResult'
 import SavedProjects from './SavedProjects'
 import { analyzeUploads, askNextQuestion, buildPackage, type VisionResult } from '../lib/ai'
-import { listProjects, removeProject, saveProject, type SavedProject } from '../lib/store'
+import { listProjects, removeProject, saveProject, updateProjectEdits, type SavedProject } from '../lib/store'
+import type { PlanEdits } from '../lib/drawing'
 import {
   type Answers,
   type Question,
@@ -77,6 +78,8 @@ export default function InterviewStudio() {
   const [projects, setProjects] = useState<SavedProject[]>([])
   const scroller = useRef<HTMLDivElement>(null)
   const savedRef = useRef(false)
+  const projectIdRef = useRef<string | null>(null)
+  const [savedEdits, setSavedEdits] = useState<PlanEdits | undefined>(undefined)
 
   useEffect(() => setProjects(listProjects()), [])
 
@@ -115,12 +118,13 @@ export default function InterviewStudio() {
     if (savedRef.current) return
     savedRef.current = true
     // Store filenames only — data URLs would bloat localStorage.
-    saveProject({
+    const saved = saveProject({
       title: result.headline,
       attachments: attached.map((f) => f.name),
       answers: finalAnswers,
       pkg: result,
     })
+    projectIdRef.current = saved.id
     setProjects(listProjects())
   }
 
@@ -187,6 +191,8 @@ export default function InterviewStudio() {
 
   function openSaved(p: SavedProject) {
     savedRef.current = true
+    projectIdRef.current = p.id
+    setSavedEdits(p.edits)
     setStarted(true)
     setAttached(p.attachments.map((name) => ({ name })))
     setAnswers(p.answers)
@@ -198,6 +204,8 @@ export default function InterviewStudio() {
 
   function reset() {
     savedRef.current = false
+    projectIdRef.current = null
+    setSavedEdits(undefined)
     setStarted(false)
     setAttached([])
     setAnswers({})
@@ -303,7 +311,17 @@ export default function InterviewStudio() {
 
                   {thinking && <Typing />}
 
-                  {pkg && <PackageResult pkg={pkg} answers={answers} onRestart={reset} />}
+                  {pkg && (
+                    <PackageResult
+                      pkg={pkg}
+                      answers={answers}
+                      onRestart={reset}
+                      initialEdits={savedEdits}
+                      onEditsChange={(e) => {
+                        if (projectIdRef.current) updateProjectEdits(projectIdRef.current, e)
+                      }}
+                    />
+                  )}
                 </div>
 
                 {/* Answer chips + free text */}

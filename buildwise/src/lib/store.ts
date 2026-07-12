@@ -7,6 +7,7 @@
  */
 
 import type { Answers, ProjectPackage } from '../interview/engine'
+import type { PlanEdits } from './drawing'
 
 export interface SavedProject {
   id: string
@@ -15,6 +16,8 @@ export interface SavedProject {
   attachments: string[]
   answers: Answers
   pkg: ProjectPackage
+  /** User edits made in the sheet editor (device moves, circuits, removals). */
+  edits?: PlanEdits
 }
 
 const KEY = 'buildwise.projects.v1'
@@ -44,6 +47,10 @@ export function saveProject(p: Omit<SavedProject, 'id' | 'createdAt'>): SavedPro
   const project: SavedProject = { ...p, id: cryptoId(), createdAt: Date.now() }
   write([project, ...read()])
   return project
+}
+
+export function updateProjectEdits(id: string, edits: PlanEdits) {
+  write(read().map((p) => (p.id === id ? { ...p, edits } : p)))
 }
 
 export function removeProject(id: string) {

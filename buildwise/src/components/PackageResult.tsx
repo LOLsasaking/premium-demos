@@ -2,33 +2,45 @@ import { useMemo, useState } from 'react'
 import Icon from './Icon'
 import { DISCIPLINES, buildPanelSchedule, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
 import { exportDXF, exportHTML, exportJSON } from '../lib/export'
-import { generateSheetSet, hasPlanDrawing, type SheetKind, type SheetTheme } from '../lib/drawing'
+import { generateSheetSet, hasPlanDrawing, type PlanEdits, type SheetKind, type SheetTheme } from '../lib/drawing'
+import SheetEditor from './SheetEditor'
 
 export default function PackageResult({
   pkg,
   answers,
   onRestart,
+  initialEdits,
+  onEditsChange,
 }: {
   pkg: ProjectPackage
   answers: Answers
   onRestart: () => void
+  initialEdits?: PlanEdits
+  onEditsChange?: (e: PlanEdits) => void
 }) {
   const [openMaterials, setOpenMaterials] = useState(false)
   const [openCosts, setOpenCosts] = useState(false)
   const [exported, setExported] = useState(false)
   const [sheetId, setSheetId] = useState<SheetKind>('power')
   const [theme, setTheme] = useState<SheetTheme>('blueprint')
+  const [editing, setEditing] = useState(false)
+  const [edits, setEdits] = useState<PlanEdits>(initialEdits ?? {})
 
   const sheets = useMemo(
-    () => (hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, theme) : null),
-    [answers, pkg, theme],
+    () => (hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, theme, edits) : null),
+    [answers, pkg, theme, edits],
   )
   const active = sheets?.find((s) => s.id === sheetId) ?? sheets?.[0]
   const [openPanel, setOpenPanel] = useState(false)
   const panel = useMemo(() => buildPanelSchedule(answers, pkg), [answers, pkg])
 
+  function changeEdits(e: PlanEdits) {
+    setEdits(e)
+    onEditsChange?.(e)
+  }
+
   function handleExport() {
-    exportHTML(answers, pkg)
+    exportHTML(answers, pkg, edits)
     setExported(true)
     setTimeout(() => setExported(false), 2500)
   }
@@ -73,18 +85,28 @@ export default function PackageResult({
             <h4 className="text-xs font-600 uppercase tracking-wider text-muted">
               Draft plan sheets ({sheets.length})
             </h4>
-            <div className="flex overflow-hidden rounded-lg border border-line text-xs">
-              {(['blueprint', 'autocad'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={`px-3 py-1.5 font-500 transition ${
-                    theme === t ? 'bg-build text-ink' : 'bg-panel text-muted hover:text-mist'
-                  }`}
-                >
-                  {t === 'blueprint' ? 'Blueprint' : 'AutoCAD'}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
+                  editing ? 'border-build bg-build text-ink' : 'border-line bg-panel text-muted hover:text-mist'
+                }`}
+              >
+                {editing ? 'Done editing' : 'Edit devices'}
+              </button>
+              <div className="flex overflow-hidden rounded-lg border border-line text-xs">
+                {(['blueprint', 'autocad'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`px-3 py-1.5 font-500 transition ${
+                      theme === t ? 'bg-build text-ink' : 'bg-panel text-muted hover:text-mist'
+                    }`}
+                  >
+                    {t === 'blueprint' ? 'Blueprint' : 'AutoCAD'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -102,10 +124,19 @@ export default function PackageResult({
               </button>
             ))}
           </div>
-          <div
-            className="mt-3 overflow-hidden rounded-xl border border-line [&>svg]:block [&>svg]:w-full"
-            dangerouslySetInnerHTML={{ __html: active.svg }}
-          />
+          {editing ? (
+            <div className="mt-3 overflow-hidden rounded-xl border border-build/40">
+              <SheetEditor answers={answers} pkg={pkg} theme={theme} edits={edits} onChange={changeEdits} />
+              <p className="border-t border-line bg-panel2 px-3 py-2 text-center text-[11px] text-muted">
+                Click a device to inspect it · drag to move (snaps to 3″) · edits apply to the sheets, document and DXF
+              </p>
+            </div>
+          ) : (
+            <div
+              className="mt-3 overflow-hidden rounded-xl border border-line [&>svg]:block [&>svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: active.svg }}
+            />
+          )}
         </>
       )}
 
@@ -299,7 +330,7 @@ export default function PackageResult({
       </div>
       <div className="mt-2 flex items-center justify-center gap-4 text-xs text-muted">
         {hasPlanDrawing(pkg) && (
-          <button onClick={() => exportDXF(answers, pkg)} className="transition hover:text-mist">
+          <button onClick={() => exportDXF(answers, pkg, edits)} className="transition hover:text-mist">
             Export DXF (AutoCAD)
           </button>
         )}

@@ -16,7 +16,7 @@ import {
   type Answers,
   type ProjectPackage,
 } from '../interview/engine'
-import { generateSheetSet, hasPlanDrawing } from './drawing'
+import { generateSheetSet, hasPlanDrawing, type PlanEdits } from './drawing'
 import { generateDXF } from './dxf'
 
 function triggerDownload(filename: string, content: string, mime: string) {
@@ -40,16 +40,16 @@ export function exportJSON(answers: Answers, pkg: ProjectPackage) {
   triggerDownload(`buildwise-${slug(pkg.headline)}.json`, JSON.stringify(payload, null, 2), 'application/json')
 }
 
-export function exportHTML(answers: Answers, pkg: ProjectPackage) {
-  triggerDownload(`buildwise-${slug(pkg.headline)}.html`, buildDocument(answers, pkg), 'text/html')
+export function exportHTML(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits) {
+  triggerDownload(`buildwise-${slug(pkg.headline)}.html`, buildDocument(answers, pkg, edits), 'text/html')
 }
 
 /** CAD handoff: a real .dxf on named layers, openable in AutoCAD/LibreCAD. */
-export function exportDXF(answers: Answers, pkg: ProjectPackage) {
-  triggerDownload(`buildwise-${slug(pkg.headline)}.dxf`, generateDXF(answers, pkg), 'application/dxf')
+export function exportDXF(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits) {
+  triggerDownload(`buildwise-${slug(pkg.headline)}.dxf`, generateDXF(answers, pkg, edits), 'application/dxf')
 }
 
-function buildDocument(answers: Answers, pkg: ProjectPackage): string {
+function buildDocument(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits): string {
   const projectLabel = (PROJECT_TYPES as Record<string, string>)[answers.project] ?? 'Project'
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -73,7 +73,7 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
 
   const highlights = pkg.highlights.map((h) => `<li>${esc(h)}</li>`).join('')
 
-  const sheets = hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, 'paper') : null
+  const sheets = hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, 'paper', edits) : null
 
   const scheduleRows = (pkg.schedule ?? [])
     .map(
