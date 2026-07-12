@@ -1,0 +1,16 @@
+{
+  "name": "buildwise-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "BuildWise AI API server — proxies the Anthropic Claude API for the interview, package generation and vision.",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

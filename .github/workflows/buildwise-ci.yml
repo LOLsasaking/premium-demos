@@ -1,0 +1,25 @@
+name: BuildWise CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['buildwise/**']
+  pull_request:
+    paths: ['buildwise/**']
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: buildwise
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: buildwise/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
