@@ -15,6 +15,9 @@ export default function App() {
   useReveal()
   return (
     <>
+      <a href="#studio" className="skip-link">
+        Skip to the project studio
+      </a>
       <Nav />
       <main>
         <Hero />

@@ -72,6 +72,35 @@
   transform: none;
 }
 
+/* Respect reduced-motion preferences: no entrance/float animations. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-floaty,
+  .animate-blink {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Skip link for keyboard users */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+.skip-link:focus {
+  left: 16px;
+  top: 16px;
+  @apply rounded-xl bg-blueprint px-4 py-2 text-sm font-600 text-white;
+}
+
 /* Thin custom scrollbar inside chat */
 .thin-scroll::-webkit-scrollbar {
   width: 8px;
