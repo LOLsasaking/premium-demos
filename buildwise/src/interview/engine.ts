@@ -157,6 +157,49 @@ const QUESTIONS: Question[] = [
       { label: PROJECT_TYPES.solar, value: 'solar', hint: 'Generation + storage' },
     ],
   },
+  // Whole-house program — asked only for ground-up builds.
+  {
+    id: 'beds',
+    prompt: 'A ground-up build — great. How many bedrooms are we designing?',
+    when: (a) => a.project === 'newbuild',
+    choices: [
+      { label: '2 bedrooms', value: '2' },
+      { label: '3 bedrooms', value: '3' },
+      { label: '4 bedrooms', value: '4' },
+      { label: '5 bedrooms', value: '5' },
+    ],
+  },
+  {
+    id: 'baths',
+    prompt: 'And bathrooms?',
+    when: (a) => a.project === 'newbuild',
+    choices: [
+      { label: '1 bath', value: '1' },
+      { label: '2 baths', value: '2' },
+      { label: '2.5 baths', value: '2.5', hint: 'Two full + powder room' },
+      { label: '3+ baths', value: '3' },
+    ],
+  },
+  {
+    id: 'stories',
+    prompt: 'Single story or two?',
+    when: (a) => a.project === 'newbuild',
+    choices: [
+      { label: 'Single story', value: '1' },
+      { label: 'Two story', value: '2', hint: 'Plans show floor 1' },
+    ],
+  },
+  {
+    id: 'garage',
+    prompt: 'Garage?',
+    when: (a) => a.project === 'newbuild',
+    choices: [
+      { label: 'No garage', value: '0' },
+      { label: '1-car', value: '1' },
+      { label: '2-car', value: '2' },
+      { label: '3-car', value: '3' },
+    ],
+  },
   {
     id: 'structure',
     prompt: 'Got it. How is the house built? This drives framing, anchoring and drilling.',
@@ -636,6 +679,19 @@ export function buildPanelSchedule(a: Answers, pkg: ProjectPackage): Circuit[] {
       if (a.gas !== 'yes') rows.push({ description: 'Induction cooktop', breaker: '40A / 240V', poles: 2, wire: '#8' })
     }
     if (p === 'bathroom') rows.push({ description: 'Bathroom receptacles (GFCI)', breaker: '20A', poles: 1, wire: '#12' })
+    if (p === 'newbuild') {
+      const beds = parseInt(a.beds ?? '3', 10)
+      const baths = Math.ceil(parseFloat(a.baths ?? '2'))
+      for (let i = 0; i < Math.ceil(beds / 2); i++)
+        rows.push({ description: `Bedrooms ${i * 2 + 1}–${Math.min(beds, i * 2 + 2)} (AFCI per 210.12)`, breaker: '15A', poles: 1, wire: '#14' })
+      for (let i = 1; i <= baths; i++)
+        rows.push({ description: `Bathroom ${i} receptacles (GFCI)`, breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Laundry (GFCI)', breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Exterior & outbuilding (GFCI/WR)', breaker: '20A', poles: 1, wire: '#12' })
+      if ((a.garage ?? '0') !== '0')
+        rows.push({ description: 'Garage receptacles (GFCI) + opener', breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Smoke/CO detectors (interconnected)', breaker: '15A', poles: 1, wire: '#14' })
+    }
     rows.push({ description: 'General receptacles', breaker: '20A', poles: 1, wire: '#12' })
     rows.push({ description: 'Lighting (dimmed)', breaker: '15A', poles: 1, wire: '#14' })
     if (a.ev === 'yes' || a.ev === 'future') rows.push({ description: 'EV charger (load-managed)', breaker: '50A / 240V', poles: 2, wire: '#6' })

@@ -217,6 +217,72 @@ describe('DXF export', () => {
   })
 })
 
+describe('whole-house (ground-up) mode', () => {
+  const HOUSE: Answers = {
+    ...BASE,
+    project: 'newbuild',
+    area: 'xl',
+    beds: '4',
+    baths: '2.5',
+    stories: '1',
+    garage: '2',
+  }
+  const pkg = generatePackage(HOUSE)
+  const sheets = generateSheetSet(HOUSE, pkg, 'blueprint')
+
+  it('asks the whole-house program questions only for new builds', () => {
+    const a = runInterview({ project: 'newbuild' })
+    expect(a.beds).toBeDefined()
+    expect(a.baths).toBeDefined()
+    expect(a.stories).toBeDefined()
+    expect(a.garage).toBeDefined()
+    expect(runInterview({ project: 'kitchen' }).beds).toBeUndefined()
+  })
+
+  it('lays out the full room program on the sheets', () => {
+    const power = sheets.find((s: Sheet) => s.id === 'power')!.svg
+    expect(power).toContain('BEDROOM 1')
+    expect(power).toContain('BEDROOM 4')
+    expect(power).toContain('BATH 1')
+    expect(power).toContain('KITCHEN')
+    expect(power).toContain('LIVING')
+    expect(power).toContain('2-CAR GARAGE')
+    expect(power).toContain('PWDR') // the half bath
+  })
+
+  it('puts trade content a pro expects on each sheet', () => {
+    const power = sheets.find((s: Sheet) => s.id === 'power')!.svg
+    expect(power).toContain('GENERAL NOTES')
+    expect(power).toContain('210.12') // AFCI note
+    const plumbing = sheets.find((s: Sheet) => s.id === 'plumbing')!.svg
+    expect(plumbing).toContain('DWV MAIN')
+    expect(plumbing).toContain('SLOPE 1/4')
+    const hvac = sheets.find((s: Sheet) => s.id === 'hvac')!.svg
+    expect(hvac).toContain('TRUNK')
+    expect(hvac).toContain('CFM')
+    expect(hvac).toContain('MANUAL J')
+  })
+
+  it('builds a whole-house panel schedule with AFCI bedroom circuits', () => {
+    const panel = buildPanelSchedule(HOUSE, pkg)
+    const desc = panel.map((ckt) => ckt.description).join(' | ')
+    expect(desc).toMatch(/AFCI per 210.12/)
+    expect(desc).toMatch(/Bathroom 1/)
+    expect(desc).toMatch(/Laundry/)
+    expect(desc).toMatch(/Garage/)
+    expect(desc).toMatch(/Smoke\/CO/)
+    expect(panel.length).toBeGreaterThan(15)
+  })
+
+  it('house devices are still editable by id', () => {
+    const model = buildModel(HOUSE, pkg)
+    const devices = layoutPower(model)
+    expect(devices.length).toBeGreaterThan(10)
+    const edited = layoutPower(model, { power: { [devices[0].id]: { removed: true } } })
+    expect(edited.length).toBe(devices.length - 1)
+  })
+})
+
 describe('device edits', () => {
   const pkg = generatePackage(BASE)
   const model = buildModel(BASE, pkg)
