@@ -107,6 +107,20 @@ interface Pt {
 }
 export type Wall = 'N' | 'S' | 'E' | 'W'
 
+export type RoomType = 'bed' | 'bath' | 'powder' | 'kitchen' | 'living' | 'garage' | 'hall'
+
+export interface Room {
+  x: number
+  y: number
+  w: number
+  h: number
+  label: string
+  type: RoomType
+  /** interior door: wall + ft along that wall (room-local) */
+  door?: { wall: Wall; pos: number; width: number }
+  window?: { wall: Wall; pos: number; width: number }
+}
+
 export interface PlanModel {
   wFt: number
   hFt: number
@@ -118,9 +132,13 @@ export interface PlanModel {
   appliances: { x: number; y: number; label: string }[]
   hasPlumbing: boolean
   hasEV: boolean
+  /** Whole-house mode: the room program (ground-up builds). */
+  rooms?: Room[]
+  floors?: number
 }
 
 export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
+  if (a.project === 'newbuild') return buildHouseModel(a, pkg)
   const sqft = AREA_SQFT[a.area] ?? 275
   // Aspect from analyzed upload when present, else ~4:3.
   const aspect = clamp(parseFloat(a._aspect ?? '') || 4 / 3, 0.8, 2.0)
@@ -159,6 +177,151 @@ export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
     appliances,
     hasPlumbing: pkg.disciplines.includes('plumbing'),
     hasEV: a.ev === 'yes' || a.ev === 'future',
+  }
+}
+
+/**
+ * Ground-up build: derives a full single-floor room program from the
+ * whole-house interview answers (bedrooms, bathrooms, stories, garage) and
+ * lays it out deterministically — bedroom wing across the top, hall, then
+ * living/kitchen across the bottom, garage on the west.
+ */
+function buildHouseModel(a: Answers, pkg: ProjectPackage): PlanModel {
+  const beds = clamp(parseInt(a.beds ?? '3', 10) || 3, 2, 5)
+  const bathsTotal = parseFloat(a.baths ?? '2') || 2
+  const stories = parseInt(a.stories ?? '1', 10) || 1
+  const cars = clamp(parseInt(a.garage ?? '2', 10) || 0, 0, 3)
+
+  // Floor 1 program (two-story homes push most bedrooms upstairs).
+  const beds1 = stories === 2 ? Math.max(1, beds - 2) : beds
+  const baths1 = stories === 2 ? Math.max(1, Math.ceil(bathsTotal) - 1) : Math.ceil(bathsTotal)
+  const powder = stories === 1 && bathsTotal % 1 !== 0
+
+  const sqft = Math.max(AREA_SQFT[a.area] ?? 1400, 520 + beds1 * 200 + baths1 * 90 + (cars ? 60 : 0))
+  const aspect = clamp(parseFloat(a._aspect ?? '') || 1.55, 1.2, 2.0)
+  const garW = cars ? Math.min(12 + (cars - 1) * 8, Math.sqrt(sqft * aspect) * 0.34) : 0
+  const W = Math.round(Math.sqrt(sqft * aspect) + garW * 0.6)
+  const H = Math.max(24, Math.round(sqft / (W - garW * 0.4)))
+
+  const hallH = 3.5
+  const topH = Math.round((H - hallH) * 0.52)
+  const botY = topH + hallH
+  const botH = H - botY
+  const mainX = garW
+  const mainW = W - garW
+
+  const rooms: Room[] = []
+
+  // Top band: bedrooms with baths interleaved.
+  const seq: RoomType[] = []
+  let bathsLeft = baths1
+  for (let i = 0; i < beds1; i++) {
+    seq.push('bed')
+    if (bathsLeft > 0 && (i === 0 || i === 2)) {
+      seq.push('bath')
+      bathsLeft--
+    }
+  }
+  while (bathsLeft-- > 0) seq.push('bath')
+  const unit = (t: RoomType) => (t === 'bed' ? 1.5 : 1.0)
+  const totalUnits = seq.reduce((s, t) => s + unit(t), 0)
+  let cx = mainX
+  let bedN = 0
+  let bathN = 0
+  for (const t of seq) {
+    const w = (unit(t) / totalUnits) * mainW
+    const label = t === 'bed' ? `BEDROOM ${++bedN}` : `BATH ${++bathN}`
+    rooms.push({
+      x: cx,
+      y: 0,
+      w,
+      h: topH,
+      label,
+      type: t,
+      door: { wall: 'S', pos: w / 2 - 1.25, width: 2.5 },
+      window: t === 'bed' ? { wall: 'N', pos: w / 2 - 1.5, width: 3 } : undefined,
+    })
+    cx += w
+  }
+
+  // Bottom band: living (+ powder) + kitchen.
+  const botUnits = 1.6 + (powder ? 0.5 : 0) + 1.25
+  const livW = (1.6 / botUnits) * mainW
+  const pdrW = powder ? (0.5 / botUnits) * mainW : 0
+  const kitW = mainW - livW - pdrW
+  rooms.push({
+    x: mainX,
+    y: botY,
+    w: livW,
+    h: botH,
+    label: 'LIVING',
+    type: 'living',
+    door: { wall: 'N', pos: livW / 2 - 1.25, width: 2.5 },
+    window: { wall: 'S', pos: livW * 0.5 - 2, width: 4 },
+  })
+  if (powder)
+    rooms.push({
+      x: mainX + livW,
+      y: botY,
+      w: pdrW,
+      h: botH,
+      label: 'PWDR',
+      type: 'powder',
+      door: { wall: 'N', pos: pdrW / 2 - 1, width: 2 },
+    })
+  const kitX = mainX + livW + pdrW
+  rooms.push({
+    x: kitX,
+    y: botY,
+    w: kitW,
+    h: botH,
+    label: 'KITCHEN',
+    type: 'kitchen',
+    door: { wall: 'N', pos: kitW / 2 - 1.25, width: 2.5 },
+    window: { wall: 'S', pos: kitW / 2 - 1.5, width: 3 },
+  })
+
+  // Hall + garage.
+  rooms.push({ x: mainX, y: topH, w: mainW, h: hallH, label: 'HALL', type: 'hall' })
+  if (cars)
+    rooms.push({
+      x: 0,
+      y: 0,
+      w: garW,
+      h: H,
+      label: `${cars}-CAR GARAGE`,
+      type: 'garage',
+      door: { wall: 'E', pos: topH + 0.5, width: 2.5 },
+    })
+
+  // Kitchen counters + appliances, bath fixtures, water heater.
+  const counters = [{ x: kitX + 0.4, y: botY + botH - 2, w: kitW - 0.8, h: 2 }]
+  const appliances: PlanModel['appliances'] = [
+    { x: kitX + kitW / 2, y: botY + botH - 1, label: 'SINK' },
+    { x: kitX + kitW / 2 + 2.4, y: botY + botH - 1, label: 'DW' },
+    { x: kitX + 2, y: botY + botH - 1.2, label: 'CT' },
+    { x: kitX + kitW - 1.6, y: botY + 1.8, label: 'REF' },
+  ]
+  for (const r of rooms.filter((r) => r.type === 'bath' || r.type === 'powder')) {
+    appliances.push({ x: r.x + 1.1, y: r.y + 1.3, label: 'WC' })
+    appliances.push({ x: r.x + r.w - 1.1, y: r.y + 1.1, label: 'LAV' })
+    if (r.type === 'bath' && r.w >= 5.5) appliances.push({ x: r.x + r.w / 2, y: r.y + r.h - 1.4, label: 'TUB' })
+  }
+  appliances.push({ x: cars ? garW - 1.6 : W - 1.6, y: cars ? H - 1.6 : 1.6, label: 'WH' })
+
+  return {
+    wFt: W,
+    hFt: H,
+    isKitchen: false,
+    counters,
+    island: null,
+    door: { wall: 'S', pos: mainX + livW * 0.25, width: 3 }, // front door into living
+    window: { wall: 'S', pos: kitX + kitW / 2 - 1.5, width: 3 },
+    appliances,
+    hasPlumbing: pkg.disciplines.includes('plumbing'),
+    hasEV: a.ev === 'yes' || a.ev === 'future',
+    rooms,
+    floors: stories,
   }
 }
 
@@ -210,7 +373,63 @@ function applyEdits<T extends { id: string; x: number; y: number; circuit?: stri
     })
 }
 
+/** Perimeter receptacles for one room (NEC 210.52(A): one per ≤12 ft of wall). */
+function roomRecepts(r: Room): FtPt[] {
+  const out: FtPt[] = []
+  const inset = 0.35
+  const walls: [Wall, number][] = [['N', r.w], ['S', r.w], ['W', r.h], ['E', r.h]]
+  for (const [wall, len] of walls) {
+    const n = Math.max(1, Math.round(len / 12))
+    for (let i = 1; i <= n; i++) {
+      const pos = (len * i) / (n + 1)
+      if (r.door && r.door.wall === wall && pos > r.door.pos - 1 && pos < r.door.pos + r.door.width + 1) continue
+      const pt = roomWallPt(r, wall, pos)
+      out.push({
+        x: pt.x + (wall === 'W' ? inset : wall === 'E' ? -inset : 0),
+        y: pt.y + (wall === 'N' ? inset : wall === 'S' ? -inset : 0),
+      })
+    }
+  }
+  return out
+}
+
+function layoutHousePower(m: PlanModel): { gfci: FtPt[]; plain: FtPt[]; dedicated: { x: number; y: number; label: string }[] } {
+  const gfci: FtPt[] = []
+  const plain: FtPt[] = []
+  const dedicated: { x: number; y: number; label: string }[] = []
+  for (const r of m.rooms!) {
+    if (r.type === 'bed' || r.type === 'living') plain.push(...roomRecepts(r))
+    else if (r.type === 'bath' || r.type === 'powder') gfci.push({ x: r.x + r.w - 1.1, y: r.y + 0.45 }) // at the lav
+    else if (r.type === 'kitchen') {
+      // Counter GFCI per 210.52(C) plus dedicated appliance outlets.
+      const n = Math.max(2, Math.ceil((r.w - 1) / 4))
+      for (let i = 1; i <= n; i++) gfci.push({ x: r.x + ((r.w - 1) * i) / (n + 0.4) + 0.5, y: r.y + r.h - 2.35 })
+    } else if (r.type === 'garage') {
+      gfci.push({ x: r.x + 0.4, y: r.y + r.h * 0.3 }, { x: r.x + 0.4, y: r.y + r.h * 0.7 })
+      if (m.hasEV) dedicated.push({ x: r.x + r.w - 0.6, y: r.y + r.h - 2, label: 'EV' })
+    } else if (r.type === 'hall') plain.push({ x: r.x + r.w * 0.4, y: r.y + r.h / 2 })
+  }
+  for (const ap of m.appliances) {
+    if (ap.label === 'CT') dedicated.push({ x: ap.x, y: ap.y - 1.4, label: '240V' })
+    if (ap.label === 'DW') dedicated.push({ x: ap.x + 1.3, y: ap.y - 0.8, label: 'DW' })
+    if (ap.label === 'REF') dedicated.push({ x: ap.x, y: ap.y - 1.9, label: 'REF' })
+    if (ap.label === 'WH') dedicated.push({ x: ap.x, y: ap.y - 1.5, label: 'WH' })
+  }
+  if (!m.rooms!.some((r) => r.type === 'garage') && m.hasEV)
+    dedicated.push({ x: 0.6, y: m.hFt - 1.2, label: 'EV' })
+  return { gfci, plain, dedicated }
+}
+
 export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
+  if (m.rooms) {
+    const h = layoutHousePower(m)
+    const devices: PowerDevice[] = [
+      ...h.gfci.map((pt, i) => ({ ...pt, id: `g${i}`, kind: 'gfci' as const })),
+      ...h.plain.map((pt, i) => ({ ...pt, id: `p${i}`, kind: 'recep' as const })),
+      ...h.dedicated.map((d, i) => ({ x: d.x, y: d.y, id: `d${i}`, kind: 'dedicated' as const, label: d.label })),
+    ]
+    return applyEdits(devices, edits?.power)
+  }
   const gfci: FtPt[] = []
   const plain: FtPt[] = []
 
@@ -264,6 +483,34 @@ export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
 }
 
 export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
+  if (m.rooms) {
+    const cans: FtPt[] = []
+    const ucs: FtPt[] = [] // vanity/utility lights in house mode
+    const switches: { x: number; y: number; label: string }[] = []
+    for (const r of m.rooms) {
+      const cx = r.x + r.w / 2
+      const cy = r.y + r.h / 2
+      if (r.type === 'bed') cans.push({ x: cx, y: cy })
+      else if (r.type === 'living') cans.push({ x: cx - r.w * 0.22, y: cy }, { x: cx + r.w * 0.22, y: cy })
+      else if (r.type === 'kitchen') cans.push({ x: cx - r.w * 0.2, y: cy - 0.5 }, { x: cx + r.w * 0.2, y: cy - 0.5 })
+      else if (r.type === 'hall') cans.push({ x: r.x + r.w * 0.25, y: cy }, { x: r.x + r.w * 0.72, y: cy })
+      else if (r.type === 'bath' || r.type === 'powder') ucs.push({ x: r.x + r.w - 1.1, y: r.y + 0.5 }) // vanity bar
+      else if (r.type === 'garage') cans.push({ x: cx, y: r.y + r.h * 0.35 }, { x: cx, y: r.y + r.h * 0.7 })
+      // Switch just inside each room door.
+      if (r.door) {
+        const d = roomWallPt(r, r.door.wall, r.door.pos + r.door.width + 0.5)
+        const insetY = r.door.wall === 'S' ? -0.5 : r.door.wall === 'N' ? 0.5 : 0
+        const insetX = r.door.wall === 'E' ? -0.5 : r.door.wall === 'W' ? 0.5 : 0
+        switches.push({ x: d.x + insetX, y: d.y + insetY, label: r.type === 'living' || r.type === 'hall' ? 'S3' : 'S' })
+      }
+    }
+    const devices: LightDevice[] = [
+      ...cans.map((pt, i) => ({ ...pt, id: `c${i}`, kind: 'can' as const })),
+      ...ucs.map((pt, i) => ({ ...pt, id: `u${i}`, kind: 'uc' as const })),
+      ...switches.map((sw, i) => ({ x: sw.x, y: sw.y, id: `s${i}`, kind: 'switch' as const, label: sw.label })),
+    ]
+    return applyEdits(devices, edits?.lighting)
+  }
   const cans: FtPt[] = []
   const cx = m.wFt / 2
   const cy = m.hFt / 2
@@ -395,6 +642,7 @@ function renderSheet(
     else if (kind === 'hvac') drawHvac(c)
     else drawFraming(c)
     drawLegend(c, kind)
+    drawNotes(c, kind)
   }
   drawTitleBlock(c, pkg, kind, theme)
 
@@ -408,8 +656,105 @@ function ft(c: Ctx, fx: number, fy: number): Pt {
   return { x: c.x0 + fx * c.s, y: c.y0 + fy * c.s }
 }
 
+/** Point on a room-local wall (ft along the wall) in absolute ft coords. */
+function roomWallPt(r: Room, wall: Wall, pos: number): FtPt {
+  if (wall === 'N') return { x: r.x + pos, y: r.y }
+  if (wall === 'S') return { x: r.x + pos, y: r.y + r.h }
+  if (wall === 'W') return { x: r.x, y: r.y + pos }
+  return { x: r.x + r.w, y: r.y + pos }
+}
+
+/** Multi-room house plan: exterior shell, interior walls, doors, windows. */
+function drawHouse(c: Ctx) {
+  const { p, m, s } = c
+  const rooms = m.rooms!
+
+  // Interior room walls first (thinner), then the exterior shell on top.
+  for (const r of rooms) {
+    const t = ft(c, r.x, r.y)
+    c.parts.push(
+      `<rect x="${t.x}" y="${t.y}" width="${r.w * s}" height="${r.h * s}" fill="none" stroke="${p.wall}" stroke-width="1.8"/>`,
+    )
+  }
+  const o = ft(c, 0, 0)
+  c.parts.push(
+    `<rect x="${o.x}" y="${o.y}" width="${m.wFt * s}" height="${m.hFt * s}" fill="none" stroke="${p.wall}" stroke-width="3.5"/>`,
+  )
+
+  // Doors (gap + leaf + swing) and windows per room.
+  for (const r of rooms) {
+    if (r.door) {
+      const d = r.door
+      const a1 = roomWallPt(r, d.wall, d.pos)
+      const a2 = roomWallPt(r, d.wall, d.pos + d.width)
+      const p1 = ft(c, a1.x, a1.y)
+      const p2 = ft(c, a2.x, a2.y)
+      c.parts.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${p.bg}" stroke-width="5"/>`)
+      const leaf = d.width * s
+      const horiz = d.wall === 'N' || d.wall === 'S'
+      const lx = horiz ? p1.x : p1.x + (d.wall === 'W' ? leaf : -leaf) * 0
+      c.parts.push(
+        horiz
+          ? `<line x1="${p1.x}" y1="${p1.y}" x2="${p1.x}" y2="${p1.y + (d.wall === 'N' ? leaf : -leaf)}" stroke="${p.wall}" stroke-width="1.3"/><path d="M${p1.x} ${p1.y + (d.wall === 'N' ? leaf : -leaf)} A${leaf} ${leaf} 0 0 ${d.wall === 'N' ? 0 : 1} ${p2.x} ${p2.y}" fill="none" stroke="${p.dim}" stroke-width="0.9" stroke-dasharray="3 3"/>`
+          : `<line x1="${lx}" y1="${p1.y}" x2="${p1.x + (d.wall === 'W' ? leaf : -leaf)}" y2="${p1.y}" stroke="${p.wall}" stroke-width="1.3"/><path d="M${p1.x + (d.wall === 'W' ? leaf : -leaf)} ${p1.y} A${leaf} ${leaf} 0 0 ${d.wall === 'W' ? 1 : 0} ${p2.x} ${p2.y}" fill="none" stroke="${p.dim}" stroke-width="0.9" stroke-dasharray="3 3"/>`,
+      )
+    }
+    if (r.window) {
+      const w = r.window
+      const a1 = roomWallPt(r, w.wall, w.pos)
+      const a2 = roomWallPt(r, w.wall, w.pos + w.width)
+      const p1 = ft(c, a1.x, a1.y)
+      const p2 = ft(c, a2.x, a2.y)
+      const off = w.wall === 'W' || w.wall === 'E' ? { x: 2.5, y: 0 } : { x: 0, y: 2.5 }
+      c.parts.push(
+        `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${p.bg}" stroke-width="5"/>`,
+        `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${p.wall}" stroke-width="1.2"/>`,
+        `<line x1="${p1.x - off.x}" y1="${p1.y - off.y}" x2="${p2.x - off.x}" y2="${p2.y - off.y}" stroke="${p.wall}" stroke-width="1.2"/>`,
+        `<line x1="${p1.x + off.x}" y1="${p1.y + off.y}" x2="${p2.x + off.x}" y2="${p2.y + off.y}" stroke="${p.wall}" stroke-width="1.2"/>`,
+      )
+    }
+    // Room label.
+    if (r.type !== 'hall') {
+      const ctr = ft(c, r.x + r.w / 2, r.y + r.h / 2)
+      c.parts.push(
+        `<text x="${ctr.x}" y="${ctr.y + (r.type === 'kitchen' || r.type === 'living' ? -r.h * s * 0.28 : 0)}" fill="${p.text}" font-size="${r.w * s > 70 ? 10.5 : 8}" font-family="Arial, sans-serif" text-anchor="middle" letter-spacing="1">${esc(r.label)}</text>`,
+      )
+    }
+  }
+  // Front door gap on the exterior wall.
+  const fd = m.door
+  const f1 = wallPoint(c, fd.wall, fd.pos)
+  const f2 = wallPoint(c, fd.wall, fd.pos + fd.width)
+  c.parts.push(
+    `<line x1="${f1.x}" y1="${f1.y}" x2="${f2.x}" y2="${f2.y}" stroke="${p.bg}" stroke-width="6"/>`,
+    `<line x1="${f1.x}" y1="${f1.y}" x2="${f1.x}" y2="${f1.y - fd.width * s}" stroke="${p.wall}" stroke-width="1.5"/>`,
+    `<path d="M${f1.x} ${f1.y - fd.width * s} A${fd.width * s} ${fd.width * s} 0 0 1 ${f2.x} ${f2.y}" fill="none" stroke="${p.dim}" stroke-width="1" stroke-dasharray="4 3"/>`,
+  )
+
+  // Counters + appliances + dims.
+  for (const r of m.counters) {
+    const t = ft(c, r.x, r.y)
+    c.parts.push(
+      `<rect x="${t.x}" y="${t.y}" width="${r.w * s}" height="${r.h * s}" fill="none" stroke="${p.dim}" stroke-width="1" stroke-dasharray="5 3"/>`,
+    )
+  }
+  for (const ap of m.appliances) drawAppliance(c, ap)
+
+  const top1 = ft(c, 0, 0)
+  const top2 = ft(c, m.wFt, 0)
+  c.parts.push(dimLine(top1.x, top1.y - 20, top2.x, top2.y - 20, `${m.wFt}'-0"`, p, false))
+  const r1 = ft(c, m.wFt, 0)
+  const r2 = ft(c, m.wFt, m.hFt)
+  c.parts.push(dimLine(r1.x + 22, r1.y, r2.x + 22, r2.y, `${m.hFt}'-0"`, p, true))
+  if ((m.floors ?? 1) > 1) {
+    const tag = ft(c, 0, m.hFt)
+    c.parts.push(txt(tag.x, tag.y + 16, 'FLOOR 1 OF 2 SHOWN', p))
+  }
+}
+
 function drawRoom(c: Ctx) {
   const { p, m, s } = c
+  if (m.rooms) return drawHouse(c)
   const a = ft(c, 0, 0)
   const b = ft(c, m.wFt, m.hFt)
 
@@ -513,6 +858,27 @@ function drawAppliance(c: Ctx, ap: { x: number; y: number; label: string }) {
       `<rect x="${t.x - 1 * s}" y="${t.y - 1.1 * s}" width="${2 * s}" height="${2.2 * s}" fill="none" stroke="${ink}" stroke-width="1.3" stroke-dasharray="5 3"/>`,
       txt(t.x, t.y + 3, 'REF', c.p, 'middle'),
     )
+  } else if (ap.label === 'WC') {
+    // Toilet: tank + bowl.
+    c.parts.push(
+      `<rect x="${t.x - 0.75 * s}" y="${t.y - 0.55 * s}" width="${1.5 * s}" height="${0.5 * s}" fill="none" stroke="${ink}" stroke-width="1.1"/>`,
+      `<ellipse cx="${t.x}" cy="${t.y + 0.35 * s}" rx="${0.55 * s}" ry="${0.7 * s}" fill="none" stroke="${ink}" stroke-width="1.1"/>`,
+    )
+  } else if (ap.label === 'LAV') {
+    c.parts.push(
+      `<rect x="${t.x - 0.65 * s}" y="${t.y - 0.5 * s}" width="${1.3 * s}" height="${s}" rx="3" fill="none" stroke="${ink}" stroke-width="1.1"/>`,
+      `<circle cx="${t.x}" cy="${t.y}" r="${0.32 * s}" fill="none" stroke="${ink}" stroke-width="1"/>`,
+    )
+  } else if (ap.label === 'TUB') {
+    c.parts.push(
+      `<rect x="${t.x - 1.3 * s}" y="${t.y - 0.65 * s}" width="${2.6 * s}" height="${1.3 * s}" rx="${0.3 * s}" fill="none" stroke="${ink}" stroke-width="1.2"/>`,
+      `<rect x="${t.x - 1.1 * s}" y="${t.y - 0.45 * s}" width="${2.2 * s}" height="${0.9 * s}" rx="${0.3 * s}" fill="none" stroke="${ink}" stroke-width="0.9"/>`,
+    )
+  } else if (ap.label === 'WH') {
+    c.parts.push(
+      `<circle cx="${t.x}" cy="${t.y}" r="${0.85 * s}" fill="none" stroke="${ink}" stroke-width="1.3"/>`,
+      txt(t.x, t.y + 3, 'WH', c.p, 'middle'),
+    )
   } else {
     c.parts.push(txt(t.x + 8, t.y + 3, ap.label, c.p))
   }
@@ -569,6 +935,41 @@ function recepGlyph(p: Palette, gfci: boolean): string {
 function drawLighting(c: Ctx, edits?: PlanEdits) {
   const { p, m } = c
   const devices = layoutLighting(m, edits)
+
+  if (m.rooms) {
+    // House mode: every room gets a switch; each fixture legs to its
+    // nearest switch instead of one long chain across rooms.
+    const fixtures = devices.filter((d) => d.kind !== 'switch')
+    const sws = devices.filter((d) => d.kind === 'switch')
+    for (const f of fixtures) {
+      let best = sws[0]
+      let bd = Infinity
+      for (const sw of sws) {
+        const dd = (sw.x - f.x) ** 2 + (sw.y - f.y) ** 2
+        if (dd < bd) {
+          bd = dd
+          best = sw
+        }
+      }
+      if (best) c.parts.push(curve(ft(c, best.x, best.y), ft(c, f.x, f.y), p.leg, ''))
+    }
+    for (const d of fixtures) {
+      const pt = ft(c, d.x, d.y)
+      if (d.kind === 'can') canSymbol(c, pt)
+      else if (d.kind === 'pendant') pendantSymbol(c, pt)
+      else ucSymbol(c, pt)
+    }
+    for (const sw of sws) switchSymbol(c, ft(c, sw.x, sw.y), sw.label ?? 'S')
+    const note = ft(c, m.wFt * 0.02, -0.8)
+    c.parts.push(
+      `<text x="${note.x}" y="${note.y - 14}" fill="${p.text}" font-size="10.5" font-family="Arial, sans-serif">Note: all lighting on dimmer switches · bath fans 50 CFM min vented to exterior</text>`,
+    )
+    c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><line x1="4.5" y1="5.5" x2="13.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/><line x1="13.5" y1="5.5" x2="4.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/>`, 'recessed can'])
+    c.legend.push([`<circle cx="9" cy="10" r="3.6" fill="none" stroke="${p.light}" stroke-width="1.3"/>`, 'vanity / utility light'])
+    c.legend.push([`<text x="4" y="14" fill="${p.text}" font-size="12" font-style="italic" font-family="Georgia, serif">S</text>`, 'switch (S3 = 3-way)'])
+    c.legend.push([`<path d="M2 12 Q9 2 16 12" fill="none" stroke="${p.leg}" stroke-width="1.2"/>`, 'switch leg'])
+    return
+  }
   const cans = devices.filter((d) => d.kind === 'can').map((d) => ft(c, d.x, d.y))
   const pendants = devices.filter((d) => d.kind === 'pendant').map((d) => ft(c, d.x, d.y))
   const ucs = devices.filter((d) => d.kind === 'uc').map((d) => ft(c, d.x, d.y))
@@ -646,6 +1047,55 @@ function switchSymbol(c: Ctx, pt: Pt, label: string) {
 
 function drawPlumbing(c: Ctx) {
   const { p, m } = c
+
+  if (m.rooms) {
+    // Whole house: 3" DWV main under the hall, branches from each wet room,
+    // stack + cleanout at the west end, CW/HW distribution from the WH.
+    const hall = m.rooms.find((r) => r.type === 'hall')!
+    const wet = m.rooms.filter((r) => r.type === 'bath' || r.type === 'powder' || r.type === 'kitchen')
+    const mainY = hall.y + hall.h / 2
+    const stackFt = { x: hall.x + 0.8, y: mainY }
+    const mainA = ft(c, stackFt.x, mainY)
+    const mainB = ft(c, m.wFt - 0.8, mainY)
+    c.parts.push(pipe([mainA, mainB], p.circuit, '10 4 2 4', 2.6))
+    c.parts.push(txt(mainA.x + 30, mainA.y - 8, '3" DWV MAIN — SLOPE 1/4"/FT', p))
+    for (const r of wet) {
+      const src = ft(c, r.x + r.w / 2, r.y + (r.y < hall.y ? r.h - 0.8 : 0.8))
+      const drop = ft(c, r.x + r.w / 2, mainY)
+      c.parts.push(pipe([src, drop], p.circuit, '10 4 2 4', 2))
+      // Vent up from each wet room.
+      const vTop = ft(c, r.x + r.w / 2, r.y + (r.y < hall.y ? r.h - 3 : 3))
+      c.parts.push(pipe([src, vTop], p.leg, '3 4', 1.1))
+    }
+    const stack = ft(c, stackFt.x, stackFt.y)
+    c.parts.push(
+      `<circle cx="${stack.x}" cy="${stack.y}" r="7" fill="${p.bg}" stroke="${p.circuit}" stroke-width="1.6"/>`,
+      `<line x1="${stack.x - 5}" y1="${stack.y + 5}" x2="${stack.x + 5}" y2="${stack.y - 5}" stroke="${p.circuit}" stroke-width="1.4"/>`,
+      txt(stack.x + 10, stack.y + 14, '3" STACK + CO', p),
+    )
+    // Water: meter at the front wall, cold to WH, CW/HW mains along the hall.
+    const wh = m.appliances.find((ap) => ap.label === 'WH')!
+    const whPt = ft(c, wh.x, wh.y)
+    const meter = ft(c, m.wFt * 0.45, m.hFt)
+    c.parts.push(
+      `<rect x="${meter.x - 7}" y="${meter.y - 7}" width="14" height="14" fill="${p.bg}" stroke="${p.device}" stroke-width="1.5"/>`,
+      txt(meter.x + 10, meter.y - 2, 'M', p),
+    )
+    c.parts.push(pipe([meter, { x: meter.x, y: whPt.y }, { x: whPt.x + 12, y: whPt.y }], p.device, '', 1.6))
+    const cwY = ft(c, 0, mainY + 0.9).y
+    const hwY = cwY + 7
+    c.parts.push(pipe([{ x: whPt.x, y: whPt.y - 12 }, { x: whPt.x, y: cwY }, { x: mainA.x, y: cwY }], p.device, '', 1.4))
+    c.parts.push(pipe([{ x: whPt.x - 6, y: whPt.y - 12 }, { x: whPt.x - 6, y: hwY }, { x: mainA.x, y: hwY }], p.light, '7 4', 1.4))
+    c.parts.push(txt(mainB.x - 120, cwY - 5, '3/4" CW', p), txt(mainB.x - 120, hwY + 12, '3/4" HW', p))
+
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.device}" stroke-width="1.6"/>`, 'cold water (3/4")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.light}" stroke-width="1.6" stroke-dasharray="6 3"/>`, 'hot water (3/4")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.circuit}" stroke-width="2.4" stroke-dasharray="8 3 2 3"/>`, 'drain-waste (2"–3")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.leg}" stroke-width="1.2" stroke-dasharray="3 4"/>`, 'vent (1-1/2")'])
+    c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="none" stroke="${p.wall}" stroke-width="1.4"/><text x="9" y="13" fill="${p.text}" font-size="6.5" text-anchor="middle" font-family="monospace">WH</text>`, 'water heater'])
+    c.legend.push([`<circle cx="9" cy="10" r="5.5" fill="none" stroke="${p.circuit}" stroke-width="1.4"/><line x1="5" y1="14" x2="13" y2="6" stroke="${p.circuit}" stroke-width="1.2"/>`, 'stack + cleanout'])
+    return
+  }
   // Fixture anchor points (ft): sink from the model or a default wet wall spot.
   const sinkAp = m.appliances.find((ap) => ap.label === 'SINK')
   const sinkFt = sinkAp ? { x: sinkAp.x, y: sinkAp.y } : { x: 1.2, y: m.window.pos + m.window.width / 2 }
@@ -703,6 +1153,56 @@ function drawPlumbing(c: Ctx) {
 
 function drawHvac(c: Ctx) {
   const { p, m } = c
+
+  if (m.rooms) {
+    // Whole house: trunk along the hall, branch + register per habitable
+    // room (CFM sized by area), central return, AHU in the garage/corner.
+    const hall = m.rooms.find((r) => r.type === 'hall')!
+    const served = m.rooms.filter((r) => ['bed', 'living', 'kitchen'].includes(r.type))
+    const trunkY = hall.y + hall.h / 2
+    const garage = m.rooms.find((r) => r.type === 'garage')
+    const ahuFt = garage ? { x: garage.x + garage.w - 1.6, y: trunkY } : { x: m.wFt - 1.8, y: trunkY }
+    const ahu = ft(c, ahuFt.x, ahuFt.y)
+    const t1 = ft(c, Math.min(...served.map((r) => r.x + r.w / 2)), trunkY)
+    const t2 = ft(c, Math.max(...served.map((r) => r.x + r.w / 2)), trunkY)
+    c.parts.push(duct([ahu, t1.x < ahu.x ? t1 : t2], p))
+    c.parts.push(duct([t1, t2], p))
+    c.parts.push(txt((t1.x + t2.x) / 2 - 40, t1.y - 10, '14x10 TRUNK', p))
+    for (const r of served) {
+      const reg = ft(c, r.x + r.w / 2, r.y + r.h / 2 + (r.y < hall.y ? 0.8 : -0.8))
+      const tap = ft(c, r.x + r.w / 2, trunkY)
+      c.parts.push(duct([tap, reg], p))
+      registerSymbol(c, reg)
+      const cfm = Math.max(60, Math.round((r.w * r.h) / 2 / 10) * 10)
+      c.parts.push(txt(reg.x + 12, reg.y - 10, `${cfm} CFM · 6"Ø`, p))
+    }
+    // Central return in the hall + thermostat + condenser outside.
+    const ret = ft(c, hall.x + hall.w * 0.55, trunkY)
+    c.parts.push(`<rect x="${ret.x - 16}" y="${ret.y - 8}" width="32" height="16" fill="${p.bg}" stroke="${p.leg}" stroke-width="1.5"/>`)
+    for (let i = 1; i <= 3; i++)
+      c.parts.push(`<line x1="${ret.x - 16}" y1="${ret.y - 8 + i * 4}" x2="${ret.x + 16}" y2="${ret.y - 8 + i * 4}" stroke="${p.leg}" stroke-width="1"/>`)
+    c.parts.push(txt(ret.x - 12, ret.y + 22, '20x20 RA', p))
+    const stat = ft(c, hall.x + hall.w * 0.35, trunkY)
+    c.parts.push(
+      `<circle cx="${stat.x}" cy="${stat.y}" r="7" fill="${p.bg}" stroke="${p.device}" stroke-width="1.5"/>`,
+      `<text x="${stat.x}" y="${stat.y + 3.5}" fill="${p.device}" font-size="9" font-family="monospace" text-anchor="middle">T</text>`,
+    )
+    const cu = ft(c, m.wFt + 1.8, m.hFt * 0.25)
+    c.parts.push(
+      `<rect x="${ahu.x - 16}" y="${ahu.y - 14}" width="32" height="28" fill="${p.bg}" stroke="${p.wall}" stroke-width="1.6"/>`,
+      `<text x="${ahu.x}" y="${ahu.y + 4}" fill="${p.text}" font-size="9" font-family="monospace" text-anchor="middle">AHU</text>`,
+      `<rect x="${cu.x - 14}" y="${cu.y - 14}" width="28" height="28" fill="none" stroke="${p.wall}" stroke-width="1.4" stroke-dasharray="4 3"/>`,
+      `<text x="${cu.x}" y="${cu.y + 3.5}" fill="${p.text}" font-size="8.5" font-family="monospace" text-anchor="middle">CU</text>`,
+    )
+    c.parts.push(pipe([{ x: ahu.x, y: ahu.y - 14 }, { x: ahu.x, y: cu.y }, { x: cu.x - 14, y: cu.y }], p.circuit, '4 3', 1.3))
+
+    c.legend.push([`<g stroke="${p.dim}" stroke-width="1.2"><rect x="2" y="4" width="14" height="14" fill="none"/><line x1="2" y1="4" x2="16" y2="18"/><line x1="16" y1="4" x2="2" y2="18"/></g>`, 'supply diffuser + CFM'])
+    c.legend.push([`<rect x="2" y="5" width="16" height="10" fill="none" stroke="${p.leg}" stroke-width="1.3"/><line x1="2" y1="9" x2="18" y2="9" stroke="${p.leg}" stroke-width="0.9"/><line x1="2" y1="12" x2="18" y2="12" stroke="${p.leg}" stroke-width="0.9"/>`, 'return grille'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.dim}" stroke-width="5" opacity=".45"/><line x1="2" y1="10" x2="18" y2="10" stroke="${p.dim}" stroke-width="1"/>`, 'supply duct'])
+    c.legend.push([`<circle cx="9" cy="10" r="6" fill="none" stroke="${p.device}" stroke-width="1.3"/><text x="9" y="13" fill="${p.device}" font-size="7" text-anchor="middle" font-family="monospace">T</text>`, 'thermostat'])
+    c.legend.push([`<rect x="3" y="4" width="13" height="13" fill="none" stroke="${p.wall}" stroke-width="1.2" stroke-dasharray="3 2"/>`, 'condenser (exterior)'])
+    return
+  }
   const ahu = ft(c, m.wFt - 2.2, 1.6) // air handler, NE
   const cu = ft(c, m.wFt + 1.8, 3.6) // condenser, outside E wall
   const stat = ft(c, m.wFt - 0.45, m.hFt * 0.45) // thermostat on E wall
@@ -880,6 +1380,85 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
     ? `<text x="${mx}" y="${my}" fill="${p.dim}" font-size="10" font-family="monospace" text-anchor="middle" transform="rotate(90 ${mx} ${my})" dy="-5">${esc(label)}</text>`
     : `<text x="${mx}" y="${my - 6}" fill="${p.dim}" font-size="10" font-family="monospace" text-anchor="middle">${esc(label)}</text>`
   return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${p.dim}" stroke-width="1"/>${ticks}${text}`
+}
+
+/** General notes per trade — the code references a working pro expects. */
+const SHEET_NOTES: Record<SheetKind, string[]> = {
+  power: [
+    '1. ALL WORK PER NEC 2023 AND LOCAL',
+    '   AMENDMENTS. PERMIT REQUIRED.',
+    '2. KITCHEN/BATH/EXTERIOR/GARAGE',
+    '   RECEPTS GFCI PER 210.8.',
+    '3. BEDROOM CIRCUITS AFCI PER 210.12.',
+    '4. COUNTER RECEPTS MAX 4\'-0" O.C.',
+    '   PER 210.52(C).',
+    '5. RECEPTS 18" AFF, SWITCHES 48" AFF',
+    '   TO C/L, U.N.O.',
+    '6. SMOKE/CO ALARMS INTERCONNECTED,',
+    '   120V W/ BATTERY BACKUP, R314/R315.',
+    '7. VERIFY SERVICE SIZE AND METER',
+    '   LOCATION WITH SERVING UTILITY.',
+  ],
+  lighting: [
+    '1. ALL LIGHTING ON DIMMERS U.N.O.',
+    '2. RECESSED CANS IC-RATED AIR-TIGHT',
+    '   IN INSULATED CEILINGS.',
+    '3. SWITCH HEIGHT 48" AFF TO C/L.',
+    '4. BATH FANS 50 CFM MIN, VENTED',
+    '   TO EXTERIOR, ON TIMER.',
+    '5. CLOSET LUMINAIRES PER NEC 410.16.',
+    '6. EXTERIOR FIXTURES WET-LISTED.',
+  ],
+  plumbing: [
+    '1. ALL WORK PER IPC/UPC AS ADOPTED.',
+    '2. DWV SLOPE 1/4" PER FT MIN (<=3" DIA).',
+    '3. VENTS WITHIN TRAP-ARM LIMITS;',
+    '   TERMINATE 10\'-0" FROM OPENINGS.',
+    '4. WH T&P RELIEF PIPED TO APPROVED',
+    '   LOCATION; SEISMIC STRAPS PER CODE.',
+    '5. WATER-TEST DWV; PRESSURE-TEST',
+    '   SUPPLY AT 50 PSI / 15 MIN.',
+    '6. SUPPLY PEX-A W/ MANIFOLD OR EQUAL;',
+    '   INSULATE HW RUNS.',
+  ],
+  hvac: [
+    '1. DESIGN PER ACCA MANUAL J / S / D.',
+    '2. DUCTS IN UNCONDITIONED SPACE R-8',
+    '   MIN, JOINTS MASTIC-SEALED.',
+    '3. BALANCE SYSTEM TO CFM SHOWN +/-10%.',
+    '4. CONDENSATE TO APPROVED DRAIN W/',
+    '   TRAP + OVERFLOW PROTECTION.',
+    '5. BATH/KITCHEN EXHAUST VENTED TO',
+    '   EXTERIOR — NOT INTO ATTIC.',
+    '6. T-STAT 52" AFF ON INTERIOR WALL.',
+  ],
+  framing: [
+    '1. LUMBER DF#2 OR BETTER U.N.O.',
+    '2. LVL PER MFR SPEC; 3" MIN BEARING.',
+    '3. SIMPSON (OR EQUAL) CONNECTORS',
+    '   AS NOTED; NAIL PER SCHEDULE.',
+    '4. HEADERS (2) 2x10 U.N.O. AT OPENINGS.',
+    '5. FIRE-BLOCK PER IRC R302.11.',
+    '6. ENGINEER OF RECORD TO VERIFY ALL',
+    '   BEAMS, POSTS AND FOUNDATIONS.',
+  ],
+}
+
+function drawNotes(c: Ctx, kind: SheetKind) {
+  const { p } = c
+  const lx = W - 218
+  const top = M + 8 + c.legend.length * 26 + 34 + 14
+  const lines = SHEET_NOTES[kind]
+  const maxLines = Math.floor((H - 90 - top - 24) / 12.5)
+  const shown = lines.slice(0, Math.max(0, maxLines))
+  c.parts.push(
+    `<text x="${lx}" y="${top}" fill="${p.text}" font-size="10" font-family="monospace" letter-spacing="2.5">GENERAL NOTES</text>`,
+  )
+  shown.forEach((line, i) =>
+    c.parts.push(
+      `<text x="${lx}" y="${top + 16 + i * 12.5}" fill="${p.dim}" font-size="8.5" font-family="monospace">${esc(line)}</text>`,
+    ),
+  )
 }
 
 function drawLegend(c: Ctx, kind: SheetKind) {
