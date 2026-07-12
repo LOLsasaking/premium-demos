@@ -8,8 +8,16 @@
  * the MVP "receive your package" promise entirely client-side.
  */
 
-import { DISCIPLINES, PROJECT_TYPES, formatUSD, type Answers, type ProjectPackage } from '../interview/engine'
-import { generatePlanSVG, hasPlanDrawing } from './drawing'
+import {
+  DISCIPLINES,
+  PROJECT_TYPES,
+  buildPanelSchedule,
+  formatUSD,
+  type Answers,
+  type ProjectPackage,
+} from '../interview/engine'
+import { generateSheetSet, hasPlanDrawing } from './drawing'
+import { generateDXF } from './dxf'
 
 function triggerDownload(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -36,6 +44,11 @@ export function exportHTML(answers: Answers, pkg: ProjectPackage) {
   triggerDownload(`buildwise-${slug(pkg.headline)}.html`, buildDocument(answers, pkg), 'text/html')
 }
 
+/** CAD handoff: a real .dxf on named layers, openable in AutoCAD/LibreCAD. */
+export function exportDXF(answers: Answers, pkg: ProjectPackage) {
+  triggerDownload(`buildwise-${slug(pkg.headline)}.dxf`, generateDXF(answers, pkg), 'application/dxf')
+}
+
 function buildDocument(answers: Answers, pkg: ProjectPackage): string {
   const projectLabel = (PROJECT_TYPES as Record<string, string>)[answers.project] ?? 'Project'
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -60,7 +73,7 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
 
   const highlights = pkg.highlights.map((h) => `<li>${esc(h)}</li>`).join('')
 
-  const planSVG = hasPlanDrawing(pkg) ? generatePlanSVG(answers, pkg) : ''
+  const sheets = hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, 'paper') : null
 
   const scheduleRows = (pkg.schedule ?? [])
     .map(
@@ -73,6 +86,13 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
     .map(
       (c) =>
         `<tr><td>${esc(DISCIPLINES[c.discipline].name)}</td><td class="qty">${formatUSD(c.low)}–${formatUSD(c.high)}</td></tr>`,
+    )
+    .join('')
+
+  const panelRows = buildPanelSchedule(answers, pkg)
+    .map(
+      (ckt) =>
+        `<tr><td class="num">${ckt.ckt}</td><td>${esc(ckt.description)}</td><td class="qty">${esc(ckt.breaker)}</td><td class="qty">${ckt.poles}P</td><td class="qty">${esc(ckt.wire)}</td></tr>`,
     )
     .join('')
 
@@ -130,12 +150,14 @@ function buildDocument(answers: Answers, pkg: ProjectPackage): string {
 
   ${highlights ? `<h2>Highlights</h2><ul class="hl">${highlights}</ul>` : ''}
 
-  ${planSVG ? `<h2>Draft plan drawing</h2><div class="plan">${planSVG}</div>` : ''}
+  ${sheets ? `<h2>Draft plan sheets (${sheets.length})</h2>` + sheets.map((s, i) => `<div class="plan"${i ? ' style="margin-top:16px"' : ''}>${s.svg}</div>`).join('') : ''}
 
   ${scheduleRows ? `<h2>Build schedule</h2><table><tbody>${scheduleRows}</tbody></table>` : ''}
 
   <h2>Deliverables</h2>
   ${deliverables}
+
+  ${panelRows ? `<h2>Panel schedule</h2><table><thead><tr><th>Ckt</th><th>Description</th><th style="text-align:right">Breaker</th><th style="text-align:right">Poles</th><th style="text-align:right">Wire</th></tr></thead><tbody>${panelRows}</tbody></table>` : ''}
 
   <h2>Material list</h2>
   <table><thead><tr><th>Category</th><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>${materialRows}</tbody></table>

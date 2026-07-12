@@ -41,6 +41,20 @@ function readImage(file: File): Promise<Attachment> {
   })
 }
 
+/**
+ * Real local analysis of an uploaded plan image: measure its pixel
+ * dimensions so the drawn room matches the picture's proportions. (The
+ * Claude vision backend goes further and extracts rooms/doors/fixtures.)
+ */
+function measureAspect(dataUrl: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : null)
+    img.onerror = () => resolve(null)
+    img.src = dataUrl
+  })
+}
+
 function formatVision(v: VisionResult): string {
   const bits: string[] = []
   if (v.spaceType) bits.push(`this looks like ${v.spaceType.toLowerCase()}`)
@@ -112,18 +126,35 @@ export default function InterviewStudio() {
 
   async function begin() {
     setStarted(true)
+    let seed: Answers = {}
     if (attached.length > 0) {
       setThinking(true)
-      // Remote Claude vision when the backend is configured; filename-based
-      // acknowledgment from the local engine otherwise.
       const images = attached.filter((f): f is Required<Attachment> => Boolean(f.dataUrl))
+      // Real analysis, two tiers: measure the image locally (its proportions
+      // shape the generated plan sheets), and send it to Claude vision when
+      // the backend is configured for full room/fixture extraction.
+      if (images.length > 0) {
+        const aspect = await measureAspect(images[0].dataUrl)
+        if (aspect) seed = { _aspect: aspect.toFixed(3) }
+      }
       const remote = await analyzeUploads(images)
-      const text = remote ? formatVision(remote) : describeUploads(attached.map((f) => f.name))
+      let text: string
+      if (remote) {
+        // Claude's estimated real-world dimensions beat pixel proportions.
+        if (remote.approxWidthFt && remote.approxHeightFt)
+          seed = { _aspect: (remote.approxWidthFt / remote.approxHeightFt).toFixed(3) }
+        text = formatVision(remote)
+      } else {
+        text = describeUploads(attached.map((f) => f.name))
+        if (seed._aspect)
+          text += ` I measured the layout proportions (~${seed._aspect}:1) — your plan sheets will match them.`
+      }
       await wait(700)
       setMessages([{ role: 'ai', text }])
       setThinking(false)
+      setAnswers(seed)
     }
-    await advance({})
+    await advance(seed)
   }
 
   function commit(q: Question, value: string, userText: string) {

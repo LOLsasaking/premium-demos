@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import Icon from './Icon'
-import { DISCIPLINES, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
-import { exportHTML, exportJSON } from '../lib/export'
-import { generatePlanSVG, hasPlanDrawing } from '../lib/drawing'
+import { DISCIPLINES, buildPanelSchedule, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
+import { exportDXF, exportHTML, exportJSON } from '../lib/export'
+import { generateSheetSet, hasPlanDrawing, type SheetKind, type SheetTheme } from '../lib/drawing'
 
 export default function PackageResult({
   pkg,
@@ -16,11 +16,16 @@ export default function PackageResult({
   const [openMaterials, setOpenMaterials] = useState(false)
   const [openCosts, setOpenCosts] = useState(false)
   const [exported, setExported] = useState(false)
+  const [sheetId, setSheetId] = useState<SheetKind>('power')
+  const [theme, setTheme] = useState<SheetTheme>('blueprint')
 
-  const planSVG = useMemo(
-    () => (hasPlanDrawing(pkg) ? generatePlanSVG(answers, pkg) : null),
-    [answers, pkg],
+  const sheets = useMemo(
+    () => (hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, theme) : null),
+    [answers, pkg, theme],
   )
+  const active = sheets?.find((s) => s.id === sheetId) ?? sheets?.[0]
+  const [openPanel, setOpenPanel] = useState(false)
+  const panel = useMemo(() => buildPanelSchedule(answers, pkg), [answers, pkg])
 
   function handleExport() {
     exportHTML(answers, pkg)
@@ -61,13 +66,45 @@ export default function PackageResult({
         </ul>
       )}
 
-      {/* Draft plan drawing */}
-      {planSVG && (
+      {/* Draft plan sheets */}
+      {sheets && active && (
         <>
-          <h4 className="mt-6 text-xs font-600 uppercase tracking-wider text-muted">Draft plan preview</h4>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-600 uppercase tracking-wider text-muted">
+              Draft plan sheets ({sheets.length})
+            </h4>
+            <div className="flex overflow-hidden rounded-lg border border-line text-xs">
+              {(['blueprint', 'autocad'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`px-3 py-1.5 font-500 transition ${
+                    theme === t ? 'bg-build text-ink' : 'bg-panel text-muted hover:text-mist'
+                  }`}
+                >
+                  {t === 'blueprint' ? 'Blueprint' : 'AutoCAD'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {sheets.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSheetId(s.id)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
+                  active.id === s.id
+                    ? 'border-blueprint bg-blueprint text-white'
+                    : 'border-line bg-panel text-muted hover:text-mist'
+                }`}
+              >
+                {s.no} · {s.name.split(' ')[0].charAt(0) + s.name.split(' ')[0].slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
           <div
             className="mt-3 overflow-hidden rounded-xl border border-line [&>svg]:block [&>svg]:w-full"
-            dangerouslySetInnerHTML={{ __html: planSVG }}
+            dangerouslySetInnerHTML={{ __html: active.svg }}
           />
         </>
       )}
@@ -157,6 +194,49 @@ export default function PackageResult({
         </div>
       )}
 
+      {/* Panel schedule (collapsible) */}
+      {panel.length > 0 && (
+        <>
+          <button
+            onClick={() => setOpenPanel((v) => !v)}
+            className="mt-2 flex w-full items-center justify-between rounded-xl border border-line bg-panel px-4 py-3 text-sm font-500 text-mist transition hover:border-blueprint"
+          >
+            <span className="flex items-center gap-2">
+              <Icon path="M13 2 3 14h7l-1 8 10-12h-7z" size={16} />
+              Panel schedule ({panel.length} circuits)
+            </span>
+            <Icon path={openPanel ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} size={16} />
+          </button>
+          {openPanel && (
+            <div className="mt-2 overflow-hidden rounded-xl border border-line">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-panel2 text-xs uppercase tracking-wider text-muted">
+                  <tr>
+                    <th className="px-3 py-2 font-500">Ckt</th>
+                    <th className="px-3 py-2 font-500">Description</th>
+                    <th className="px-3 py-2 text-right font-500">Breaker</th>
+                    <th className="px-3 py-2 text-right font-500">Wire</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {panel.map((ckt) => (
+                    <tr key={ckt.ckt} className="border-t border-line">
+                      <td className="px-3 py-2 font-mono text-muted">{ckt.ckt}</td>
+                      <td className="px-3 py-2 text-mist">{ckt.description}</td>
+                      <td className="px-3 py-2 text-right font-mono text-muted">
+                        {ckt.breaker}
+                        {ckt.poles === 2 ? ' · 2P' : ''}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-muted">{ckt.wire}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
       {/* Cost breakdown (collapsible) */}
       {pkg.costBreakdown && pkg.costBreakdown.length > 0 && (
         <>
@@ -217,12 +297,16 @@ export default function PackageResult({
           <Icon path="M3 12a9 9 0 1 0 3-6.7M3 4v4h4" size={16} /> New
         </button>
       </div>
-      <button
-        onClick={() => exportJSON(answers, pkg)}
-        className="mt-2 w-full text-center text-xs text-muted transition hover:text-mist"
-      >
-        or export as JSON (for CAD / BIM handoff)
-      </button>
+      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-muted">
+        {hasPlanDrawing(pkg) && (
+          <button onClick={() => exportDXF(answers, pkg)} className="transition hover:text-mist">
+            Export DXF (AutoCAD)
+          </button>
+        )}
+        <button onClick={() => exportJSON(answers, pkg)} className="transition hover:text-mist">
+          Export JSON (BIM handoff)
+        </button>
+      </div>
     </div>
   )
 }

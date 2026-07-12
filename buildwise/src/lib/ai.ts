@@ -54,8 +54,13 @@ export async function buildPackage(answers: Answers): Promise<ProjectPackage> {
 export interface VisionResult {
   spaceType?: string
   approxSqft?: number | null
+  approxWidthFt?: number | null
+  approxHeightFt?: number | null
   rooms?: string[]
   fixtures?: string[]
+  doors?: { wall: string; posFt: number; widthFt: number }[]
+  windows?: { wall: string; posFt: number; widthFt: number }[]
+  counters?: { xFt: number; yFt: number; wFt: number; hFt: number }[]
   notes?: string
   missing?: string[]
 }
