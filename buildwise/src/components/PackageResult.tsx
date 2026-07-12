@@ -1,5 +1,8 @@
-import { useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import Icon from './Icon'
+
+// three.js stays in its own chunk — loaded only when the 3D tab opens.
+const Plan3DViewer = lazy(() => import('./Plan3DViewer'))
 import { DISCIPLINES, buildPanelSchedule, type Answers, type ProjectPackage, formatUSD } from '../interview/engine'
 import { exportDXF, exportHTML, exportJSON } from '../lib/export'
 import { generateSheetSet, hasPlanDrawing, type PlanEdits, type SheetKind, type SheetTheme } from '../lib/drawing'
@@ -21,7 +24,7 @@ export default function PackageResult({
   const [openMaterials, setOpenMaterials] = useState(false)
   const [openCosts, setOpenCosts] = useState(false)
   const [exported, setExported] = useState(false)
-  const [sheetId, setSheetId] = useState<SheetKind>('power')
+  const [sheetId, setSheetId] = useState<SheetKind | '3d'>('power')
   const [theme, setTheme] = useState<SheetTheme>('blueprint')
   const [editing, setEditing] = useState(false)
   const [edits, setEdits] = useState<PlanEdits>(initialEdits ?? {})
@@ -115,7 +118,7 @@ export default function PackageResult({
                 key={s.id}
                 onClick={() => setSheetId(s.id)}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
-                  active.id === s.id
+                  sheetId !== '3d' && active.id === s.id
                     ? 'border-blueprint bg-blueprint text-white'
                     : 'border-line bg-panel text-muted hover:text-mist'
                 }`}
@@ -123,8 +126,31 @@ export default function PackageResult({
                 {s.no} · {s.name.split(' ')[0].charAt(0) + s.name.split(' ')[0].slice(1).toLowerCase()}
               </button>
             ))}
+            <button
+              onClick={() => setSheetId('3d')}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
+                sheetId === '3d'
+                  ? 'border-build bg-build text-ink'
+                  : 'border-line bg-panel text-muted hover:text-mist'
+              }`}
+            >
+              ◧ 3D Model
+            </button>
           </div>
-          {editing ? (
+          {sheetId === '3d' ? (
+            <div className="mt-3 overflow-hidden rounded-xl border border-line">
+              <Suspense
+                fallback={
+                  <div className="grid h-[440px] place-items-center text-sm text-muted">Building 3D model…</div>
+                }
+              >
+                <Plan3DViewer answers={answers} pkg={pkg} edits={edits} className="h-[440px]" />
+              </Suspense>
+              <p className="border-t border-line bg-panel2 px-3 py-2 text-center text-[11px] text-muted">
+                Your generated plan in 3D — same rooms, fixtures, lighting and wiring as the sheets. Device edits apply here too.
+              </p>
+            </div>
+          ) : editing ? (
             <div className="mt-3 overflow-hidden rounded-xl border border-build/40">
               <SheetEditor answers={answers} pkg={pkg} theme={theme} edits={edits} onChange={changeEdits} />
               <p className="border-t border-line bg-panel2 px-3 py-2 text-center text-[11px] text-muted">
