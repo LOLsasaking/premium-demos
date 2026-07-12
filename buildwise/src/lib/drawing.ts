@@ -171,13 +171,46 @@ export interface FtPt {
   y: number
 }
 
-export interface PowerLayout {
-  gfci: FtPt[]
-  plain: FtPt[]
-  dedicated: { x: number; y: number; label: string }[]
+/** A user edit applied to one generated device (keyed by device id). */
+export interface DeviceEdit {
+  dx?: number
+  dy?: number
+  removed?: boolean
+  circuit?: string
 }
 
-export function layoutPower(m: PlanModel): PowerLayout {
+export type PlanEdits = Partial<Record<'power' | 'lighting', Record<string, DeviceEdit>>>
+
+export interface PowerDevice extends FtPt {
+  id: string
+  kind: 'gfci' | 'recep' | 'dedicated'
+  label?: string
+  circuit?: string
+}
+
+export interface LightDevice extends FtPt {
+  id: string
+  kind: 'can' | 'pendant' | 'uc' | 'switch'
+  label?: string
+  circuit?: string
+}
+
+/** Applies user edits to a generated device list (ids refer to base order). */
+function applyEdits<T extends { id: string; x: number; y: number; circuit?: string }>(
+  devices: T[],
+  edits?: Record<string, DeviceEdit>,
+): T[] {
+  if (!edits) return devices
+  return devices
+    .filter((d) => !edits[d.id]?.removed)
+    .map((d) => {
+      const e = edits[d.id]
+      if (!e) return d
+      return { ...d, x: d.x + (e.dx ?? 0), y: d.y + (e.dy ?? 0), circuit: e.circuit ?? d.circuit }
+    })
+}
+
+export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
   const gfci: FtPt[] = []
   const plain: FtPt[] = []
 
@@ -212,7 +245,7 @@ export function layoutPower(m: PlanModel): PowerLayout {
     if (m.hasPlumbing) gfci.push({ x: 1.2, y: m.window.pos + 1.5 })
   }
 
-  const dedicated: PowerLayout['dedicated'] = []
+  const dedicated: { x: number; y: number; label: string }[] = []
   for (const ap of m.appliances) {
     if (ap.label === 'SINK') dedicated.push({ x: ap.x + 1.4, y: ap.y + 1.2, label: 'GD' })
     if (ap.label === 'DW') dedicated.push({ x: ap.x + 1.4, y: ap.y, label: 'DW' })
@@ -222,17 +255,15 @@ export function layoutPower(m: PlanModel): PowerLayout {
   }
   if (m.hasEV && !m.isKitchen) dedicated.push({ x: 0.6, y: m.hFt - 1.2, label: 'EV' })
 
-  return { gfci, plain, dedicated }
+  const devices: PowerDevice[] = [
+    ...gfci.map((pt, i) => ({ ...pt, id: `g${i}`, kind: 'gfci' as const })),
+    ...plain.map((pt, i) => ({ ...pt, id: `p${i}`, kind: 'recep' as const })),
+    ...dedicated.map((d, i) => ({ x: d.x, y: d.y, id: `d${i}`, kind: 'dedicated' as const, label: d.label })),
+  ]
+  return applyEdits(devices, edits?.power)
 }
 
-export interface LightingLayout {
-  cans: FtPt[]
-  pendants: FtPt[]
-  ucs: FtPt[]
-  switches: { x: number; y: number; label: string }[]
-}
-
-export function layoutLighting(m: PlanModel): LightingLayout {
+export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
   const cans: FtPt[] = []
   const cx = m.wFt / 2
   const cy = m.hFt / 2
@@ -262,7 +293,13 @@ export function layoutLighting(m: PlanModel): LightingLayout {
     { x: 0.8, y: m.hFt - 0.8, label: m.isKitchen ? 'S3' : 'S' },
   ]
 
-  return { cans, pendants, ucs, switches }
+  const devices: LightDevice[] = [
+    ...cans.map((pt, i) => ({ ...pt, id: `c${i}`, kind: 'can' as const })),
+    ...pendants.map((pt, i) => ({ ...pt, id: `pd${i}`, kind: 'pendant' as const })),
+    ...ucs.map((pt, i) => ({ ...pt, id: `u${i}`, kind: 'uc' as const })),
+    ...switches.map((sw, i) => ({ x: sw.x, y: sw.y, id: `s${i}`, kind: 'switch' as const, label: sw.label })),
+  ]
+  return applyEdits(devices, edits?.lighting)
 }
 
 export function hasPlanDrawing(pkg: ProjectPackage): boolean {
@@ -279,6 +316,16 @@ const W = 880
 const H = 620
 const M = 56 // plan margin
 
+/** Sheet canvas size (viewBox units) — the editor overlays in this space. */
+export const SHEET_SIZE = { w: W, h: H }
+
+/** Plan-area transform: ft → sheet units. Shared with the interactive editor. */
+export function sheetTransform(m: PlanModel): { x0: number; y0: number; s: number } {
+  const planW = W - 300 // leave room for legend column
+  const planH = H - 170
+  return { x0: M, y0: M + 8, s: Math.min(planW / m.wFt, planH / m.hFt) }
+}
+
 interface Ctx {
   p: Palette
   s: number // px per ft
@@ -290,7 +337,12 @@ interface Ctx {
 }
 
 /** Full sheet set for the package — one professional sheet per relevant trade. */
-export function generateSheetSet(a: Answers, pkg: ProjectPackage, theme: SheetTheme): Sheet[] {
+export function generateSheetSet(
+  a: Answers,
+  pkg: ProjectPackage,
+  theme: SheetTheme,
+  edits?: PlanEdits,
+): Sheet[] {
   const model = buildModel(a, pkg)
   const has = (d: string) => pkg.disciplines.includes(d as ProjectPackage['disciplines'][number])
   const kinds: SheetKind[] = []
@@ -298,16 +350,24 @@ export function generateSheetSet(a: Answers, pkg: ProjectPackage, theme: SheetTh
   if (has('plumbing')) kinds.push('plumbing')
   if (has('hvac')) kinds.push('hvac')
   if (has('structural')) kinds.push('framing')
-  return kinds.map((k) => ({ id: k, ...SHEET_META[k], svg: renderSheet(model, pkg, theme, k) }))
+  return kinds.map((k) => ({ id: k, ...SHEET_META[k], svg: renderSheet(model, pkg, theme, k, edits) }))
 }
 
-function renderSheet(m: PlanModel, pkg: ProjectPackage, theme: SheetTheme, kind: SheetKind): string {
+/** Architecture-only sheet (no devices/legend) — the editor's backdrop. */
+export function generateShellSVG(a: Answers, pkg: ProjectPackage, theme: SheetTheme): string {
+  return renderSheet(buildModel(a, pkg), pkg, theme, 'power', undefined, true)
+}
+
+function renderSheet(
+  m: PlanModel,
+  pkg: ProjectPackage,
+  theme: SheetTheme,
+  kind: SheetKind,
+  edits?: PlanEdits,
+  shellOnly = false,
+): string {
   const p = PALETTES[theme]
-  const planW = W - 300 // leave room for legend column
-  const planH = H - 170
-  const s = Math.min(planW / m.wFt, planH / m.hFt)
-  const x0 = M
-  const y0 = M + 8
+  const { x0, y0, s } = sheetTransform(m)
   const c: Ctx = { p, s, x0, y0, m, parts: [], legend: [] }
 
   // Sheet background.
@@ -328,12 +388,14 @@ function renderSheet(m: PlanModel, pkg: ProjectPackage, theme: SheetTheme, kind:
   }
 
   drawRoom(c)
-  if (kind === 'power') drawPower(c)
-  else if (kind === 'lighting') drawLighting(c)
-  else if (kind === 'plumbing') drawPlumbing(c)
-  else if (kind === 'hvac') drawHvac(c)
-  else drawFraming(c)
-  drawLegend(c, kind)
+  if (!shellOnly) {
+    if (kind === 'power') drawPower(c, edits)
+    else if (kind === 'lighting') drawLighting(c, edits)
+    else if (kind === 'plumbing') drawPlumbing(c)
+    else if (kind === 'hvac') drawHvac(c)
+    else drawFraming(c)
+    drawLegend(c, kind)
+  }
   drawTitleBlock(c, pkg, kind, theme)
 
   const meta = SHEET_META[kind]
@@ -458,23 +520,23 @@ function drawAppliance(c: Ctx, ap: { x: number; y: number; label: string }) {
 
 /* ---------- power sheet ------------------------------------------- */
 
-function drawPower(c: Ctx) {
+function drawPower(c: Ctx, edits?: PlanEdits) {
   const { p, m } = c
-  const lay = layoutPower(m)
-  const gfci = lay.gfci.map((f) => ft(c, f.x, f.y))
-  const plain = lay.plain.map((f) => ft(c, f.x, f.y))
-  const dedicated = lay.dedicated.map((d) => ({ pt: ft(c, d.x, d.y), label: d.label }))
+  const devices = layoutPower(m, edits)
+  const gfci = devices.filter((d) => d.kind === 'gfci')
+  const plain = devices.filter((d) => d.kind === 'recep')
 
   // Circuit runs first (under symbols): chain each group with curved arcs.
-  if (gfci.length > 1) c.parts.push(curveChain(gfci, p.circuit, '7 4 2 4')) // dash-dot
-  if (plain.length > 1) c.parts.push(curveChain(plain, p.circuit, '7 4 2 4'))
+  const px = (d: FtPt) => ft(c, d.x, d.y)
+  if (gfci.length > 1) c.parts.push(curveChain(gfci.map(px), p.circuit, '7 4 2 4')) // dash-dot
+  if (plain.length > 1) c.parts.push(curveChain(plain.map(px), p.circuit, '7 4 2 4'))
 
   // Symbols.
-  for (const pt of gfci) receptacle(c, pt, true)
-  for (const pt of plain) receptacle(c, pt, false)
-  for (const d of dedicated) {
-    receptacle(c, d.pt, false)
-    c.parts.push(txt(d.pt.x + 9, d.pt.y - 7, d.label, p))
+  for (const d of devices) {
+    const pt = px(d)
+    receptacle(c, pt, d.kind === 'gfci')
+    if (d.kind === 'dedicated' && d.label) c.parts.push(txt(pt.x + 9, pt.y - 7, d.label, p))
+    if (d.circuit) c.parts.push(txt(pt.x + 9, pt.y + 14, `CKT ${d.circuit}`, p))
   }
 
   c.legend.push([recepGlyph(p, true), 'GFCI receptacle'])
@@ -504,14 +566,15 @@ function recepGlyph(p: Palette, gfci: boolean): string {
 
 /* ---------- lighting sheet ---------------------------------------- */
 
-function drawLighting(c: Ctx) {
+function drawLighting(c: Ctx, edits?: PlanEdits) {
   const { p, m } = c
-  const lay = layoutLighting(m)
-  const cans = lay.cans.map((f) => ft(c, f.x, f.y))
-  const pendants = lay.pendants.map((f) => ft(c, f.x, f.y))
-  const ucs = lay.ucs.map((f) => ft(c, f.x, f.y))
-  const sw1 = ft(c, lay.switches[0].x, lay.switches[0].y)
-  const sw2 = ft(c, lay.switches[1].x, lay.switches[1].y)
+  const devices = layoutLighting(m, edits)
+  const cans = devices.filter((d) => d.kind === 'can').map((d) => ft(c, d.x, d.y))
+  const pendants = devices.filter((d) => d.kind === 'pendant').map((d) => ft(c, d.x, d.y))
+  const ucs = devices.filter((d) => d.kind === 'uc').map((d) => ft(c, d.x, d.y))
+  const sws = devices.filter((d) => d.kind === 'switch')
+  const sw1 = sws[0] ? ft(c, sws[0].x, sws[0].y) : ft(c, m.wFt - 0.45, m.hFt * 0.7)
+  const sw2 = sws[1] ? ft(c, sws[1].x, sws[1].y) : ft(c, 0.8, m.hFt - 0.8)
 
   // Switch legs (curved, solid-thin) drawn under fixtures.
   if (cans.length) {
@@ -527,8 +590,8 @@ function drawLighting(c: Ctx) {
   for (const pt of ucs) ucSymbol(c, pt)
 
   // Switch glyphs.
-  switchSymbol(c, sw1, 'S3')
-  switchSymbol(c, sw2, m.isKitchen ? 'S3' : 'S')
+  if (sws[0]) switchSymbol(c, sw1, sws[0].label ?? 'S3')
+  if (sws[1]) switchSymbol(c, sw2, sws[1].label ?? 'S')
 
   // Dimmer note — straight from the reference sheet.
   const note = ft(c, m.wFt * 0.08, m.hFt * 0.52)

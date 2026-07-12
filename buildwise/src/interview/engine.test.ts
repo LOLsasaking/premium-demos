@@ -9,7 +9,14 @@ import {
   totalQuestions,
   type Answers,
 } from './engine'
-import { generateSheetSet, hasPlanDrawing, type Sheet } from '../lib/drawing'
+import {
+  buildModel,
+  generateSheetSet,
+  hasPlanDrawing,
+  layoutPower,
+  type PlanEdits,
+  type Sheet,
+} from '../lib/drawing'
 import { generateDXF } from '../lib/dxf'
 
 /** Answer every question with its first choice until the interview completes. */
@@ -207,6 +214,36 @@ describe('DXF export', () => {
     expect(dxf).toContain('ARC') // door swing
     expect(dxf).toContain('GFCI')
     expect(dxf).toContain('NOT FOR CONSTRUCTION')
+  })
+})
+
+describe('device edits', () => {
+  const pkg = generatePackage(BASE)
+  const model = buildModel(BASE, pkg)
+  const base = layoutPower(model)
+
+  it('moves, removes and tags devices by id', () => {
+    const first = base[0]
+    const edits: PlanEdits = {
+      power: {
+        [first.id]: { dx: 1.5, dy: -0.5, circuit: '3' },
+        [base[1].id]: { removed: true },
+      },
+    }
+    const edited = layoutPower(model, edits)
+    expect(edited.length).toBe(base.length - 1)
+    const moved = edited.find((d) => d.id === first.id)!
+    expect(moved.x).toBeCloseTo(first.x + 1.5)
+    expect(moved.y).toBeCloseTo(first.y - 0.5)
+    expect(moved.circuit).toBe('3')
+    expect(edited.find((d) => d.id === base[1].id)).toBeUndefined()
+  })
+
+  it('flows edits into the rendered sheet and the DXF', () => {
+    const edits: PlanEdits = { power: { [base[0].id]: { circuit: '7' } } }
+    const sheet = generateSheetSet(BASE, pkg, 'blueprint', edits).find((s: Sheet) => s.id === 'power')!
+    expect(sheet.svg).toContain('CKT 7')
+    expect(generateDXF(BASE, pkg, edits)).toContain('CKT 7')
   })
 })
 

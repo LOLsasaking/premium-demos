@@ -11,7 +11,7 @@
  */
 
 import type { Answers, ProjectPackage } from '../interview/engine'
-import { buildModel, layoutLighting, layoutPower, type PlanModel } from './drawing'
+import { buildModel, layoutLighting, layoutPower, type PlanEdits, type PlanModel } from './drawing'
 
 // AutoCAD Color Index: 7 white, 4 cyan, 2 yellow, 1 red, 3 green, 8 gray.
 const LAYERS: [name: string, aci: number][] = [
@@ -82,15 +82,15 @@ function r(n: number): string {
   return (Math.round(n * 1000) / 1000).toString()
 }
 
-export function generateDXF(a: Answers, pkg: ProjectPackage): string {
+export function generateDXF(a: Answers, pkg: ProjectPackage, edits?: PlanEdits): string {
   const m = buildModel(a, pkg)
   const d = new Dxf()
   // DXF Y grows up; the plan model's grows down — flip.
   const Y = (y: number) => m.hFt - y
 
   drawShell(d, m, Y)
-  drawPowerLayer(d, m, Y)
-  drawLightingLayer(d, m, Y)
+  drawPowerLayer(d, m, Y, edits)
+  drawLightingLayer(d, m, Y, edits)
 
   // Annotation.
   d.text('ANNO', m.wFt / 2 - 2.4, Y(m.hFt / 2) - 0.4, 0.5, m.isKitchen ? 'KITCHEN' : 'ROOM')
@@ -125,43 +125,44 @@ function drawShell(d: Dxf, m: PlanModel, Y: (y: number) => number) {
   for (const ap of m.appliances) d.text('A-CASE', ap.x + 0.3, Y(ap.y), 0.3, ap.label)
 }
 
-function drawPowerLayer(d: Dxf, m: PlanModel, Y: (y: number) => number) {
-  const lay = layoutPower(m)
+function drawPowerLayer(d: Dxf, m: PlanModel, Y: (y: number) => number, edits?: PlanEdits) {
+  const devices = layoutPower(m, edits)
   const recep = (x: number, y: number, gfci: boolean) => {
     d.circle('E-POWR', x, Y(y), 0.22)
     d.line('E-POWR', x - 0.38, Y(y), x - 0.22, Y(y))
     d.line('E-POWR', x + 0.22, Y(y), x + 0.38, Y(y))
     if (gfci) d.text('E-POWR', x - 0.45, Y(y) + 0.32, 0.22, 'GFCI')
   }
-  for (const pt of lay.gfci) recep(pt.x, pt.y, true)
-  for (const pt of lay.plain) recep(pt.x, pt.y, false)
-  for (const dd of lay.dedicated) {
-    recep(dd.x, dd.y, false)
-    d.text('E-POWR', dd.x + 0.4, Y(dd.y) + 0.3, 0.22, dd.label)
+  for (const dev of devices) {
+    recep(dev.x, dev.y, dev.kind === 'gfci')
+    if (dev.kind === 'dedicated' && dev.label) d.text('E-POWR', dev.x + 0.4, Y(dev.y) + 0.3, 0.22, dev.label)
+    if (dev.circuit) d.text('E-CIRC', dev.x + 0.4, Y(dev.y) - 0.45, 0.2, `CKT ${dev.circuit}`)
   }
   // Circuit chain (straight segments on the circuit layer).
   const chain = (pts: { x: number; y: number }[]) => {
     for (let i = 0; i < pts.length - 1; i++) d.line('E-CIRC', pts[i].x, Y(pts[i].y), pts[i + 1].x, Y(pts[i + 1].y))
   }
-  if (lay.gfci.length > 1) chain(lay.gfci)
-  if (lay.plain.length > 1) chain(lay.plain)
+  const gfci = devices.filter((dev) => dev.kind === 'gfci')
+  const plain = devices.filter((dev) => dev.kind === 'recep')
+  if (gfci.length > 1) chain(gfci)
+  if (plain.length > 1) chain(plain)
 }
 
-function drawLightingLayer(d: Dxf, m: PlanModel, Y: (y: number) => number) {
-  const lay = layoutLighting(m)
-  for (const pt of lay.cans) {
-    d.circle('E-LITE', pt.x, Y(pt.y), 0.35)
-    const k = 0.25
-    d.line('E-LITE', pt.x - k, Y(pt.y) - k, pt.x + k, Y(pt.y) + k)
-    d.line('E-LITE', pt.x - k, Y(pt.y) + k, pt.x + k, Y(pt.y) - k)
+function drawLightingLayer(d: Dxf, m: PlanModel, Y: (y: number) => number, edits?: PlanEdits) {
+  for (const dev of layoutLighting(m, edits)) {
+    if (dev.kind === 'can') {
+      d.circle('E-LITE', dev.x, Y(dev.y), 0.35)
+      const k = 0.25
+      d.line('E-LITE', dev.x - k, Y(dev.y) - k, dev.x + k, Y(dev.y) + k)
+      d.line('E-LITE', dev.x - k, Y(dev.y) + k, dev.x + k, Y(dev.y) - k)
+    } else if (dev.kind === 'pendant') {
+      d.circle('E-LITE', dev.x, Y(dev.y), 0.35)
+      d.circle('E-LITE', dev.x, Y(dev.y), 0.12)
+    } else if (dev.kind === 'uc') {
+      d.circle('E-LITE', dev.x, Y(dev.y), 0.18)
+      d.text('E-LITE', dev.x + 0.3, Y(dev.y) - 0.1, 0.18, 'UC')
+    } else {
+      d.text('E-LITE', dev.x - 0.15, Y(dev.y) - 0.15, 0.35, dev.label ?? 'S')
+    }
   }
-  for (const pt of lay.pendants) {
-    d.circle('E-LITE', pt.x, Y(pt.y), 0.35)
-    d.circle('E-LITE', pt.x, Y(pt.y), 0.12)
-  }
-  for (const pt of lay.ucs) {
-    d.circle('E-LITE', pt.x, Y(pt.y), 0.18)
-    d.text('E-LITE', pt.x + 0.3, Y(pt.y) - 0.1, 0.18, 'UC')
-  }
-  for (const sw of lay.switches) d.text('E-LITE', sw.x - 0.15, Y(sw.y) - 0.15, 0.35, sw.label)
 }
