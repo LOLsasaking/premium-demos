@@ -9,6 +9,7 @@
  * Then point the frontend at it via VITE_BUILDWISE_API_URL (see ../.env.example).
  */
 
+import fs from 'node:fs'
 import express from 'express'
 import cors from 'cors'
 import { interview, generate, vision } from './claude.js'
@@ -59,6 +60,24 @@ app.post('/api/vision', async (req, res) => {
   } catch (err) {
     console.error('vision error:', err)
     res.status(502).json({ error: String(err.message || err) })
+  }
+})
+
+// Waitlist signups append to a JSONL file. No Anthropic key required.
+const WAITLIST_FILE = process.env.WAITLIST_FILE || 'waitlist.jsonl'
+app.post('/api/waitlist', (req, res) => {
+  const email = String(req.body?.email ?? '')
+    .trim()
+    .toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Please provide a valid email address.' })
+  }
+  try {
+    fs.appendFileSync(WAITLIST_FILE, JSON.stringify({ email, ts: new Date().toISOString() }) + '\n')
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('waitlist write error:', err)
+    res.status(500).json({ error: 'Could not save your signup — try again.' })
   }
 })
 

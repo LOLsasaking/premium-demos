@@ -37,6 +37,11 @@ package generator, wrapped in a polished product site.
   routing, plumbing and framing layers.
 - **Real Claude backend** — an optional Node/Express server that proxies the
   Anthropic API for the interview, package generation and vision (see below).
+- **Working waitlist** — set `VITE_WAITLIST_URL` to any JSON form endpoint
+  (Formspree etc.), or use the bundled server's `/api/waitlist` (JSONL file).
+  Without either, signups are kept in the visitor's localStorage (demo mode).
+- **Legal pages** — `/terms.html` and `/privacy.html` ship as static pages with
+  plain-language beta terms (have counsel review before charging money).
 - **Marketplace, pricing & roadmap** — the platform vision, phased.
 
 ## Run it

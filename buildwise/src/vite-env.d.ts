@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_BUILDWISE_API_URL?: string
+  readonly VITE_WAITLIST_URL?: string
 }
 
 interface ImportMeta {

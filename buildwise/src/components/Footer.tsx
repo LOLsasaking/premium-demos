@@ -1,9 +1,30 @@
 import Logo from './Logo'
 
-const cols = [
-  ['Platform', ['How it works', 'Disciplines', 'Digital twin', 'Marketplace', 'Pricing']],
-  ['Company', ['About', 'Careers', 'Blog', 'Contact']],
-  ['Legal', ['Terms', 'Privacy', 'Professional disclaimer']],
+const cols: [string, [string, string][]][] = [
+  [
+    'Platform',
+    [
+      ['How it works', '#how'],
+      ['Try the AI', '#studio'],
+      ['Disciplines', '#disciplines'],
+      ['Marketplace', '#marketplace'],
+      ['Pricing', '#pricing'],
+    ],
+  ],
+  [
+    'Early access',
+    [
+      ['Join the waitlist', '#waitlist'],
+      ['Start a project', '#studio'],
+    ],
+  ],
+  [
+    'Legal',
+    [
+      ['Terms of use', '/terms.html'],
+      ['Privacy policy', '/privacy.html'],
+    ],
+  ],
 ]
 
 export default function Footer() {
@@ -17,13 +38,13 @@ export default function Footer() {
           </p>
         </div>
         {cols.map(([title, items]) => (
-          <div key={title as string}>
-            <p className="text-sm font-600 text-mist">{title as string}</p>
+          <div key={title}>
+            <p className="text-sm font-600 text-mist">{title}</p>
             <ul className="mt-3 space-y-2 text-sm text-muted">
-              {(items as string[]).map((i) => (
-                <li key={i}>
-                  <a href="#top" className="transition hover:text-mist">
-                    {i}
+              {items.map(([label, href]) => (
+                <li key={label}>
+                  <a href={href} className="transition hover:text-mist">
+                    {label}
                   </a>
                 </li>
               ))}
@@ -32,8 +53,11 @@ export default function Footer() {
         ))}
       </div>
       <div className="container-x mt-10 flex flex-col items-center justify-between gap-3 border-t border-line pt-6 text-xs text-muted sm:flex-row">
-        <p>© {new Date().getFullYear()} BuildWise AI. Concept demo — plans require licensed review before construction.</p>
-        <p>Built as a product prototype.</p>
+        <p>
+          © {new Date().getFullYear()} BuildWise AI. Drafts require licensed professional review before
+          construction or permitting.
+        </p>
+        <p>Early-access beta.</p>
       </div>
     </footer>
   )
