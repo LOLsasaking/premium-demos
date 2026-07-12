@@ -24,17 +24,28 @@ package generator, wrapped in a polished product site.
   quantities, a **phased build schedule**, a cost band with **per-discipline
   breakdown**, and a permit/review note — computed by a transparent construction
   rules engine (or by Claude when the backend is on).
-- **Generated draft plan drawings** — a blueprint-style SVG plan sheet with
-  dimensioned walls, receptacles spaced per NEC 210.52, a recessed-lighting grid,
-  panel, EV charger, plumbing fixtures, HVAC registers, legend and title block —
-  drawn deterministically from the interview answers.
+- **Generated professional plan sheets** — a full drawing set per project:
+  E-1 Power (receptacles per NEC 210.52 with GFCI labels and curved circuit
+  runs), E-2 Lighting (recessed cans, pendants, under-cabinet lights, S3
+  switches, dimmer note), P-1 Plumbing (CW/HW/DWV/vent runs with pipe sizes,
+  WH, cleanout), M-1 Mechanical (ducts, diffusers with CFM, return, AHU/CU,
+  thermostat) and S-1 Framing (studs 16" o.c., headers, joists, LVL beam) —
+  each with legend, dimensions, door swings and a title block. Three render
+  themes: Blueprint, **AutoCAD model space**, and white Paper for print.
+- **Real CAD handoff** — one-click **DXF export** (R12, named layers with ACI
+  colors, feet units) that opens in AutoCAD/LibreCAD, plus a numbered **panel
+  schedule** (breakers, poles, wire gauges) in the app and the export.
+- **Uploads shape the drawings** — an uploaded plan image is measured locally
+  (its proportions drive the drawn room); the Claude vision backend extracts
+  rooms, doors, windows and fixtures for full geometry.
 - **Download your package** — export a polished, **print-to-PDF construction
   document** (drawing and schedule included) or a JSON handoff for CAD/BIM,
   entirely in the browser.
 - **Saved projects** — every generated package is saved locally; reopen or delete
   past projects from the studio.
-- **Digital-twin teaser** — an interactive room where you toggle lights, electrical
-  routing, plumbing and framing layers.
+- **Interactive 3D digital twin** — a real three.js model you orbit and zoom,
+  with toggleable lights, electrical routing, plumbing and framing layers
+  (walls go transparent to reveal the studs).
 - **Real Claude backend** — an optional Node/Express server that proxies the
   Anthropic API for the interview, package generation and vision (see below).
 - **Working waitlist** — set `VITE_WAITLIST_URL` to any JSON form endpoint

@@ -604,6 +604,53 @@ function regionName(r: string): string {
   return { CA: 'California', TX: 'Texas', FL: 'Florida', NE: 'the Northeast', US: 'the US' }[r] ?? 'your area'
 }
 
+/* ------------------------------------------------------------------ */
+/* Panel schedule                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface Circuit {
+  ckt: number
+  description: string
+  breaker: string
+  poles: 1 | 2
+  wire: string
+}
+
+/**
+ * Derives a numbered panel schedule from the project answers — the kind of
+ * table an electrician expects next to an E-1 sheet.
+ */
+export function buildPanelSchedule(a: Answers, pkg: ProjectPackage): Circuit[] {
+  const has = (d: DisciplineId) => pkg.disciplines.includes(d)
+  const rows: Omit<Circuit, 'ckt'>[] = []
+  const p = a.project
+
+  if (has('electrical')) {
+    if (p === 'kitchen' || p === 'adu' || p === 'newbuild') {
+      rows.push({ description: 'Kitchen small appliance #1 (GFCI)', breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Kitchen small appliance #2 (GFCI)', breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Dishwasher', breaker: '15A', poles: 1, wire: '#14' })
+      rows.push({ description: 'Garbage disposal', breaker: '15A', poles: 1, wire: '#14' })
+      rows.push({ description: 'Microwave', breaker: '20A', poles: 1, wire: '#12' })
+      rows.push({ description: 'Refrigerator', breaker: '20A', poles: 1, wire: '#12' })
+      if (a.gas !== 'yes') rows.push({ description: 'Induction cooktop', breaker: '40A / 240V', poles: 2, wire: '#8' })
+    }
+    if (p === 'bathroom') rows.push({ description: 'Bathroom receptacles (GFCI)', breaker: '20A', poles: 1, wire: '#12' })
+    rows.push({ description: 'General receptacles', breaker: '20A', poles: 1, wire: '#12' })
+    rows.push({ description: 'Lighting (dimmed)', breaker: '15A', poles: 1, wire: '#14' })
+    if (a.ev === 'yes' || a.ev === 'future') rows.push({ description: 'EV charger (load-managed)', breaker: '50A / 240V', poles: 2, wire: '#6' })
+  }
+  if (has('hvac')) {
+    rows.push({ description: 'Air handler / furnace', breaker: '15A', poles: 1, wire: '#14' })
+    rows.push({ description: a.gas === 'yes' ? 'AC condenser' : 'Heat-pump condenser', breaker: '30A / 240V', poles: 2, wire: '#10' })
+  }
+  if (has('plumbing') && a.gas !== 'yes')
+    rows.push({ description: 'Heat-pump water heater', breaker: '30A / 240V', poles: 2, wire: '#10' })
+  if (has('solar')) rows.push({ description: 'Solar backfeed (interlock)', breaker: '40A / 240V', poles: 2, wire: '#8' })
+
+  return rows.map((r, i) => ({ ckt: i + 1, ...r }))
+}
+
 export function formatUSD(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }

@@ -111,9 +111,24 @@ reflect the region and budget band. Return ONLY the JSON object.`
 }
 
 export async function vision(images) {
-  const system = `You are a construction vision system. Interpret the uploaded floor plans/photos.
+  const system = `You are a construction vision system. Interpret the uploaded floor plans/photos
+and extract the geometry needed to draft an electrical plan.
 Return ONLY JSON:
-{"spaceType":"...","approxSqft":<number|null>,"rooms":["..."],"fixtures":["..."],"notes":"...","missing":["<what to ask the user>"]}`
+{
+  "spaceType": "...",
+  "approxSqft": <number|null>,
+  "approxWidthFt": <number|null>,
+  "approxHeightFt": <number|null>,
+  "rooms": ["..."],
+  "fixtures": ["sink","range","refrigerator",...],
+  "doors": [{"wall":"N|S|E|W","posFt":<number>,"widthFt":<number>}],
+  "windows": [{"wall":"N|S|E|W","posFt":<number>,"widthFt":<number>}],
+  "counters": [{"xFt":<number>,"yFt":<number>,"wFt":<number>,"hFt":<number>}],
+  "notes": "...",
+  "missing": ["<what to ask the user>"]
+}
+Estimate dimensions from door widths (~3 ft) and fixture sizes when no scale is given.
+Use null/[] for anything you cannot determine — never invent precision.`
   const user = `Interpret these ${images.length} image(s) of a home.`
-  return ask({ system, user, images, maxTokens: 900 })
+  return ask({ system, user, images, maxTokens: 1400 })
 }
