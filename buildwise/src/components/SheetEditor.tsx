@@ -7,7 +7,9 @@ import {
   generateShellSVG,
   layoutLighting,
   layoutPower,
+  patchDeviceEdit,
   sheetTransform,
+  snapPlanOffset,
   type LightDevice,
   type PlanEdits,
   type PowerDevice,
@@ -67,9 +69,7 @@ export default function SheetEditor({
   const sel = devices.find((d) => d.layer + ':' + d.id === selected) ?? null
 
   function patch(layer: 'power' | 'lighting', id: string, up: Partial<{ dx: number; dy: number; removed: boolean; circuit: string }>) {
-    const layerEdits = { ...(edits[layer] ?? {}) }
-    layerEdits[id] = { ...layerEdits[id], ...up }
-    onChange({ ...edits, [layer]: layerEdits })
+    onChange(patchDeviceEdit(edits, layer, id, up))
   }
 
   /** Client px → sheet viewBox units. */
@@ -95,10 +95,9 @@ export default function SheetEditor({
     const pt = toSheet(e)
     const dFtX = (pt.x - drag.current.startX) / tf.s
     const dFtY = (pt.y - drag.current.startY) / tf.s
-    const snap = (n: number) => Math.round(n * 4) / 4 // 3" grid
     patch(drag.current.layer, drag.current.id, {
-      dx: snap(drag.current.baseDx + dFtX),
-      dy: snap(drag.current.baseDy + dFtY),
+      dx: snapPlanOffset(drag.current.baseDx + dFtX),
+      dy: snapPlanOffset(drag.current.baseDy + dFtY),
     })
   }
 

@@ -344,6 +344,27 @@ export interface DeviceEdit {
 
 export type PlanEdits = Partial<Record<'power' | 'lighting', Record<string, DeviceEdit>>>
 
+export type EditableLayer = 'power' | 'lighting'
+
+export function snapPlanOffset(value: number): number {
+  return Math.round(value * 4) / 4
+}
+
+export function patchDeviceEdit(
+  edits: PlanEdits,
+  layer: EditableLayer,
+  id: string,
+  update: Partial<DeviceEdit>,
+): PlanEdits {
+  return {
+    ...edits,
+    [layer]: {
+      ...(edits[layer] ?? {}),
+      [id]: { ...edits[layer]?.[id], ...update },
+    },
+  }
+}
+
 export interface PowerDevice extends FtPt {
   id: string
   kind: 'gfci' | 'recep' | 'dedicated'

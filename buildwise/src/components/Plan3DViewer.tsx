@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
-import { buildModel, layoutLighting, layoutPower, type PlanEdits, type PlanModel } from '../lib/drawing'
+import { buildModel, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, type EditableLayer, type PlanEdits, type PlanModel } from '../lib/drawing'
 
 /**
  * 3D model of the generated project — the same PlanModel and device layouts
@@ -35,6 +35,7 @@ interface Built {
   pointLights: THREE.PointLight[]
   fixtureMats: THREE.MeshStandardMaterial[]
   ambient: THREE.AmbientLight
+  selectables: THREE.Object3D[]
 }
 
 function wallBox(
@@ -107,6 +108,11 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   }
   const counterMat = new THREE.MeshStandardMaterial({ color: C.counter, roughness: 0.6 })
   const fixtureMat = new THREE.MeshStandardMaterial({ color: C.fixture, roughness: 0.5 })
+  const selectables: THREE.Object3D[] = []
+  const tag = (mesh: THREE.Object3D, layer: EditableLayer, id: string, kind: string, baseX: number, baseY: number) => {
+    mesh.userData = { editable: true, layer, id, kind, baseX, baseY }
+    selectables.push(mesh)
+  }
 
   // Floor + grid.
   const floor = new THREE.Mesh(
@@ -206,6 +212,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
 
   /* ---- LIGHTS layer ------------------------------------------------ */
   const lightDevs = layoutLighting(m, edits)
+  const baseLights = new Map(layoutLighting(m).map((d) => [d.id, d]))
   const grpLights = new THREE.Group()
   const fixtureMats: THREE.MeshStandardMaterial[] = []
   const pointLights: THREE.PointLight[] = []
@@ -222,10 +229,14 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
       grpLights.add(cord)
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 12), emat)
       bulb.position.set(d.x, WALL_H - 1.9, d.y)
+      const base = baseLights.get(d.id)!
+      tag(bulb, 'lighting', d.id, d.kind, base.x, base.y)
       grpLights.add(bulb)
     } else {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.1, 14), emat)
       disc.position.set(d.x, WALL_H - 0.06, d.y)
+      const base = baseLights.get(d.id)!
+      tag(disc, 'lighting', d.id, d.kind, base.x, base.y)
       grpLights.add(disc)
     }
     // Budget the real lights (forward renderer): at most 6 point lights.
@@ -236,15 +247,25 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
       grpLights.add(pl)
     }
   })
+  lightDevs.filter((d) => d.kind === 'switch' || d.kind === 'uc').forEach((d) => {
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: C.light, emissive: C.light, emissiveIntensity: 0.8 }))
+    marker.position.set(d.x, d.kind === 'switch' ? 3.8 : 6.6, d.y)
+    const base = baseLights.get(d.id)!
+    tag(marker, 'lighting', d.id, d.kind, base.x, base.y)
+    grpLights.add(marker)
+  })
   root.add(grpLights)
 
   /* ---- ELECTRICAL layer -------------------------------------------- */
   const powerDevs = layoutPower(m, edits)
+  const basePower = new Map(layoutPower(m).map((d) => [d.id, d]))
   const grpElec = new THREE.Group()
   const outletMat = new THREE.MeshStandardMaterial({ color: C.wire, emissive: C.wire, emissiveIntensity: 0.5 })
   for (const d of powerDevs) {
     const o = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.32), outletMat)
     o.position.set(d.x, 1.3, d.y)
+    const base = basePower.get(d.id)!
+    tag(o, 'power', d.id, d.kind, base.x, base.y)
     grpElec.add(o)
   }
   const tube = (pts: THREE.Vector3[], color: number, radius: number) => {
@@ -306,6 +327,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
     pointLights,
     fixtureMats,
     ambient,
+    selectables,
   }
 }
 
@@ -313,15 +335,19 @@ export default function Plan3DViewer({
   answers,
   pkg,
   edits,
+  onChange,
   className = '',
 }: {
   answers: Answers
   pkg: ProjectPackage
   edits?: PlanEdits
+  onChange?: (edits: PlanEdits) => void
   className?: string
 }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const builtRef = useRef<Built | null>(null)
+  const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
+  const [selected, setSelected] = useState<{ layer: EditableLayer; id: string; kind: string } | null>(null)
   const [layers, setLayers] = useState<Record<Layer, boolean>>({
     lights: true,
     electrical: true,
@@ -332,7 +358,7 @@ export default function Plan3DViewer({
   useEffect(() => {
     const mount = mountRef.current
     if (!mount) return
-    const m = buildModel(answers, pkg)
+    const m = model
     const built = buildScene(m, edits)
     builtRef.current = built
 
@@ -350,6 +376,46 @@ export default function Plan3DViewer({
     controls.maxPolarAngle = Math.PI / 2.05
     controls.minDistance = span * 0.35
     controls.maxDistance = span * 2.2
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const hit = new THREE.Vector3()
+    let drag: { object: THREE.Object3D; pointerId: number; dx: number; dy: number } | null = null
+    const cast = (event: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+      raycaster.setFromCamera(pointer, camera)
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      cast(event)
+      const picked = raycaster.intersectObjects(built.selectables, false)[0]?.object
+      if (!picked) return
+      event.preventDefault()
+      controls.enabled = false
+      renderer.domElement.setPointerCapture(event.pointerId)
+      drag = { object: picked, pointerId: event.pointerId, dx: 0, dy: 0 }
+      setSelected({ layer: picked.userData.layer, id: picked.userData.id, kind: picked.userData.kind })
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      if (!drag) return
+      cast(event)
+      if (!raycaster.ray.intersectPlane(plane, hit)) return
+      const x = Math.max(0, Math.min(m.wFt, hit.x + m.wFt / 2))
+      const y = Math.max(0, Math.min(m.hFt, hit.z + m.hFt / 2))
+      drag.dx = snapPlanOffset(x - drag.object.userData.baseX)
+      drag.dy = snapPlanOffset(y - drag.object.userData.baseY)
+      drag.object.position.x = drag.object.userData.baseX + drag.dx
+      drag.object.position.z = drag.object.userData.baseY + drag.dy
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      if (!drag || drag.pointerId !== event.pointerId) return
+      onChange?.(patchDeviceEdit(edits ?? {}, drag.object.userData.layer, drag.object.userData.id, { dx: drag.dx, dy: drag.dy }))
+      drag = null
+      controls.enabled = true
+    }
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.autoRotate = !reduced
     controls.autoRotateSpeed = 0.55
@@ -386,6 +452,9 @@ export default function Plan3DViewer({
       clearTimeout(idleTimer)
       ro.disconnect()
       controls.dispose()
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
       built.scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh
         if (mesh.geometry) mesh.geometry.dispose()
@@ -397,7 +466,7 @@ export default function Plan3DViewer({
       mount.removeChild(renderer.domElement)
       builtRef.current = null
     }
-  }, [answers, pkg, edits])
+  }, [model, edits, onChange])
 
   // Layer visibility side effects.
   useEffect(() => {
@@ -423,6 +492,18 @@ export default function Plan3DViewer({
     ['framing', 'Framing'],
   ]
 
+  const allDevices = [...layoutPower(model, edits).map((d) => ({ ...d, layer: 'power' as const })), ...layoutLighting(model, edits).map((d) => ({ ...d, layer: 'lighting' as const }))]
+  const selectedDevice = selected ? allDevices.find((d) => d.layer === selected.layer && d.id === selected.id) : undefined
+  const updateSelected = (update: { dx?: number; dy?: number; removed?: boolean; circuit?: string }) => {
+    if (!selected) return
+    onChange?.(patchDeviceEdit(edits ?? {}, selected.layer, selected.id, update))
+  }
+  const nudge = (dx: number, dy: number) => {
+    if (!selected) return
+    const current = edits?.[selected.layer]?.[selected.id]
+    updateSelected({ dx: snapPlanOffset((current?.dx ?? 0) + dx), dy: snapPlanOffset((current?.dy ?? 0) + dy) })
+  }
+
   return (
     <div className={`relative ${className}`}>
       <div ref={mountRef} className="absolute inset-0" role="img" aria-label="3D model of your project" />
@@ -440,8 +521,21 @@ export default function Plan3DViewer({
         ))}
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-panel/80 px-2 py-1 text-[10px] text-muted">
-        drag to orbit · scroll to zoom
+        drag empty space to orbit · select and drag a device to edit
       </div>
+      {selected && selectedDevice && (
+        <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-[#08111e]/95 p-3 text-xs shadow-glow backdrop-blur">
+          <div className="flex items-center justify-between"><span className="font-600 capitalize text-white">{selected.kind}</span><span className="font-mono text-[9px] uppercase text-cyan">Synced object</span></div>
+          <p className="mt-1 font-mono text-[10px] text-muted">X {selectedDevice.x.toFixed(2)}′ · Y {selectedDevice.y.toFixed(2)}′</p>
+          <div className="mt-3 grid grid-cols-3 gap-1">
+            <span /><button onClick={() => nudge(0, -0.25)} className="rounded border border-line py-1.5 text-cyan">↑</button><span />
+            <button onClick={() => nudge(-0.25, 0)} className="rounded border border-line py-1.5 text-cyan">←</button><span className="grid place-items-center font-mono text-[8px] text-muted">3″</span><button onClick={() => nudge(0.25, 0)} className="rounded border border-line py-1.5 text-cyan">→</button>
+            <span /><button onClick={() => nudge(0, 0.25)} className="rounded border border-line py-1.5 text-cyan">↓</button><span />
+          </div>
+          <label className="mt-3 block text-muted">Circuit<input value={selectedDevice.circuit ?? ''} onChange={(e) => updateSelected({ circuit: e.target.value })} className="mt-1 w-full rounded border border-line bg-ink px-2 py-1.5 text-white outline-none focus:border-cyan" /></label>
+          <button onClick={() => { updateSelected({ removed: true }); setSelected(null) }} className="mt-3 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
+        </div>
+      )}
     </div>
   )
 }

@@ -24,9 +24,9 @@ export default function PackageResult({
   const [openMaterials, setOpenMaterials] = useState(false)
   const [openCosts, setOpenCosts] = useState(false)
   const [exported, setExported] = useState(false)
-  const [sheetId, setSheetId] = useState<SheetKind | '3d'>('power')
+  const [sheetId, setSheetId] = useState<SheetKind>('power')
   const [theme, setTheme] = useState<SheetTheme>('blueprint')
-  const [editing, setEditing] = useState(false)
+  const [viewMode, setViewMode] = useState<'2d' | 'split' | '3d'>('split')
   const [edits, setEdits] = useState<PlanEdits>(initialEdits ?? {})
 
   const sheets = useMemo(
@@ -84,41 +84,21 @@ export default function PackageResult({
       {/* Draft plan sheets */}
       {sheets && active && (
         <>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-600 uppercase tracking-wider text-muted">
-              Draft plan sheets ({sheets.length})
-            </h4>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setEditing((v) => !v)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
-                  editing ? 'border-build bg-build text-ink' : 'border-line bg-panel text-muted hover:text-mist'
-                }`}
-              >
-                {editing ? 'Done editing' : 'Edit devices'}
-              </button>
-              <div className="flex overflow-hidden rounded-lg border border-line text-xs">
-                {(['blueprint', 'autocad'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTheme(t)}
-                    className={`px-3 py-1.5 font-500 transition ${
-                      theme === t ? 'bg-build text-ink' : 'bg-panel text-muted hover:text-mist'
-                    }`}
-                  >
-                    {t === 'blueprint' ? 'Blueprint' : 'AutoCAD'}
-                  </button>
-                ))}
+          <div className="mt-6 overflow-hidden rounded-xl border border-line bg-[#050a12] shadow-glow">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-[#09111d] px-3 py-2">
+              <div className="flex items-center gap-3"><span className="font-mono text-[10px] uppercase tracking-[.16em] text-cyan">Cadvora workspace</span><span className="hidden font-mono text-[9px] text-muted sm:inline">{pkg.headline.toLowerCase().replace(/\s+/g, '-')}.cdv</span></div>
+              <div className="flex overflow-hidden rounded-md border border-line text-[10px] uppercase">
+                {(['2d', 'split', '3d'] as const).map((mode) => <button key={mode} aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`px-3 py-1.5 font-mono ${viewMode === mode ? 'bg-blueprint text-white' : 'text-muted hover:text-white'}`}>{mode === 'split' ? '2D + 3D' : mode}</button>)}
               </div>
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-[#070e18] p-2">
+              <div className="flex flex-wrap gap-1.5">
             {sheets.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setSheetId(s.id)}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
-                  sheetId !== '3d' && active.id === s.id
+                  active.id === s.id
                     ? 'border-blueprint bg-blueprint text-white'
                     : 'border-line bg-panel text-muted hover:text-mist'
                 }`}
@@ -126,43 +106,15 @@ export default function PackageResult({
                 {s.no} · {s.name.split(' ')[0].charAt(0) + s.name.split(' ')[0].slice(1).toLowerCase()}
               </button>
             ))}
-            <button
-              onClick={() => setSheetId('3d')}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-500 transition ${
-                sheetId === '3d'
-                  ? 'border-build bg-build text-ink'
-                  : 'border-line bg-panel text-muted hover:text-mist'
-              }`}
-            >
-              ◧ 3D Model
-            </button>
+              </div>
+              <div className="flex overflow-hidden rounded-md border border-line text-[10px]">{(['blueprint', 'autocad'] as const).map(t => <button key={t} onClick={() => setTheme(t)} className={`px-2.5 py-1 font-mono uppercase ${theme === t ? 'bg-cyan/15 text-cyan' : 'text-muted'}`}>{t}</button>)}</div>
+            </div>
+            <div className={`grid min-h-[500px] ${viewMode === 'split' ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+              {viewMode !== '3d' && <div className={`relative overflow-auto border-line bg-black ${viewMode === 'split' ? 'lg:border-r' : ''}`}><div className="absolute left-2 top-1 z-10 font-mono text-[9px] uppercase tracking-wider text-cyan">2D editable plan · live sync</div><SheetEditor answers={answers} pkg={pkg} theme="autocad" edits={edits} onChange={changeEdits} /></div>}
+              {viewMode !== '2d' && <div className="relative min-h-[500px]"><Suspense fallback={<div className="grid h-[500px] place-items-center text-sm text-muted">Building synchronized model…</div>}><Plan3DViewer answers={answers} pkg={pkg} edits={edits} onChange={changeEdits} className="h-[500px]" /></Suspense></div>}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-[#09111d] px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-muted"><span><b className="text-cyan">Synced</b> · 3-inch snap · {Object.values(edits).reduce((n, layer) => n + Object.keys(layer ?? {}).length, 0)} edits</span><span>Drag devices in either view · exports update automatically</span></div>
           </div>
-          {sheetId === '3d' ? (
-            <div className="mt-3 overflow-hidden rounded-xl border border-line">
-              <Suspense
-                fallback={
-                  <div className="grid h-[440px] place-items-center text-sm text-muted">Building 3D model…</div>
-                }
-              >
-                <Plan3DViewer answers={answers} pkg={pkg} edits={edits} className="h-[440px]" />
-              </Suspense>
-              <p className="border-t border-line bg-panel2 px-3 py-2 text-center text-[11px] text-muted">
-                Your generated plan in 3D — same rooms, fixtures, lighting and wiring as the sheets. Device edits apply here too.
-              </p>
-            </div>
-          ) : editing ? (
-            <div className="mt-3 overflow-hidden rounded-xl border border-build/40">
-              <SheetEditor answers={answers} pkg={pkg} theme={theme} edits={edits} onChange={changeEdits} />
-              <p className="border-t border-line bg-panel2 px-3 py-2 text-center text-[11px] text-muted">
-                Click a device to inspect it · drag to move (snaps to 3″) · edits apply to the sheets, document and DXF
-              </p>
-            </div>
-          ) : (
-            <div
-              className="mt-3 overflow-hidden rounded-xl border border-line [&>svg]:block [&>svg]:w-full"
-              dangerouslySetInnerHTML={{ __html: active.svg }}
-            />
-          )}
         </>
       )}
 
