@@ -423,6 +423,19 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     mesh.name = `${member.kind} ${member.scope}`
     grpStuds.add(mesh)
   }
+  // Rough-in hardware that lives with the framing: a junction box behind
+  // every device so the electrician sees box placement on the studs.
+  const jboxMat = new THREE.MeshStandardMaterial({ color: 0x2f6fbe, roughness: 0.55, metalness: 0.25 })
+  for (const dev of layoutPower(m, edits)) {
+    const jb = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.42, 0.3), jboxMat)
+    jb.position.set(dev.x, 1.35, dev.y)
+    grpStuds.add(jb)
+  }
+  for (const dev of layoutLighting(m, edits).filter((d) => d.kind === 'switch')) {
+    const jb = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.42, 0.3), jboxMat)
+    jb.position.set(dev.x, 4, dev.y)
+    grpStuds.add(jb)
+  }
   grpStuds.visible = false
   root.add(grpStuds)
 
@@ -447,6 +460,7 @@ export default function Plan3DViewer({
   focusSheet,
   cutaway = 72,
   systemGlow = 65,
+  layersOverride,
   className = '',
 }: {
   answers: Answers
@@ -456,6 +470,8 @@ export default function Plan3DViewer({
   focusSheet?: SheetKind
   cutaway?: number
   systemGlow?: number
+  /** External layer manager (the workspace's Layers panel) — merges on change. */
+  layersOverride?: Partial<Record<Layer, boolean>>
   className?: string
 }) {
   const mountRef = useRef<HTMLDivElement>(null)
@@ -474,11 +490,39 @@ export default function Plan3DViewer({
   }, [focusSheet])
 
   useEffect(() => {
+    if (layersOverride) setLayers((prev) => ({ ...prev, ...layersOverride }))
+  }, [layersOverride])
+
+  // Live values for the persistent pointer handlers (registered once).
+  const editsRef = useRef(edits)
+  editsRef.current = edits
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const smart = answers.smart === 'full' || answers.smart === 'basic'
+  const [sceneVersion, setSceneVersion] = useState(0)
+
+  // Scene graph: rebuilt when the plan changes. The renderer, camera and
+  // controls in the effect below persist, so editing never resets the view.
+  useEffect(() => {
+    const prev = builtRef.current
+    if (prev) {
+      prev.stopAsyncAssets()
+      prev.scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        if (mesh.geometry) mesh.geometry.dispose()
+        const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose())
+        else mat?.dispose()
+      })
+    }
+    builtRef.current = buildScene(model, edits, smart)
+    setSceneVersion((v) => v + 1)
+  }, [model, edits, smart])
+
+  useEffect(() => {
     const mount = mountRef.current
     if (!mount) return
     const m = model
-    const built = buildScene(m, edits, answers.smart === 'full' || answers.smart === 'basic')
-    builtRef.current = built
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -511,7 +555,7 @@ export default function Plan3DViewer({
     }
     const onPointerDown = (event: PointerEvent) => {
       cast(event)
-      const picked = raycaster.intersectObjects(built.selectables, false)[0]?.object
+      const picked = raycaster.intersectObjects(builtRef.current?.selectables ?? [], false)[0]?.object
       if (!picked) return
       event.preventDefault()
       controls.enabled = false
@@ -533,9 +577,21 @@ export default function Plan3DViewer({
     }
     const onPointerUp = (event: PointerEvent) => {
       if (!drag || drag.pointerId !== event.pointerId) return
-      onChange?.(drag.object.userData.layer === 'furniture'
-        ? patchFurnitureEdit(edits ?? {}, drag.object.userData.id, { dx: drag.dx, dy: drag.dy })
-        : patchDeviceEdit(edits ?? {}, drag.object.userData.layer, drag.object.userData.id, { dx: drag.dx, dy: drag.dy }))
+      // Deltas accumulate: the object's base position already includes prior
+      // edits, so the stored offset is previous offset + this drag.
+      const ud = drag.object.userData
+      const prevEdits = editsRef.current ?? {}
+      const prevDelta =
+        ud.layer === 'furniture'
+          ? prevEdits.furniture?.[ud.id]
+          : prevEdits[ud.layer as 'power' | 'lighting']?.[ud.id]
+      const dx = snapPlanOffset((prevDelta?.dx ?? 0) + drag.dx)
+      const dy = snapPlanOffset((prevDelta?.dy ?? 0) + drag.dy)
+      onChangeRef.current?.(
+        ud.layer === 'furniture'
+          ? patchFurnitureEdit(prevEdits, ud.id, { dx, dy })
+          : patchDeviceEdit(prevEdits, ud.layer, ud.id, { dx, dy }),
+      )
       drag = null
       controls.enabled = true
     }
@@ -569,7 +625,8 @@ export default function Plan3DViewer({
     const loop = () => {
       raf = requestAnimationFrame(loop)
       controls.update()
-      renderer.render(built.scene, camera)
+      const scene = builtRef.current?.scene
+      if (scene) renderer.render(scene, camera)
     }
     loop()
 
@@ -578,30 +635,35 @@ export default function Plan3DViewer({
       clearTimeout(idleTimer)
       ro.disconnect()
       controls.dispose()
-      built.stopAsyncAssets()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
-      built.scene.traverse((obj) => {
-        const mesh = obj as THREE.Mesh
-        if (mesh.geometry) mesh.geometry.dispose()
-        const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
-        if (Array.isArray(mat)) mat.forEach((x) => x.dispose())
-        else mat?.dispose()
-      })
+      const current = builtRef.current
+      if (current) {
+        current.stopAsyncAssets()
+        current.scene.traverse((obj) => {
+          const mesh = obj as THREE.Mesh
+          if (mesh.geometry) mesh.geometry.dispose()
+          const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+          if (Array.isArray(mat)) mat.forEach((x) => x.dispose())
+          else mat?.dispose()
+        })
+        builtRef.current = null
+      }
       renderer.dispose()
       mount.removeChild(renderer.domElement)
-      builtRef.current = null
     }
-  }, [model, edits, onChange])
+  }, [model])
 
   // Layer visibility side effects.
   useEffect(() => {
     const b = builtRef.current
     if (!b) return
     b.groups.lights.visible = layers.lights
-    b.groups.electrical.visible = layers.electrical
-    b.groups.plumbing.visible = layers.plumbing
+    // Framing is a rough-in view: the wires, boxes and pipes that coordinate
+    // through the structure stay visible with the studs.
+    b.groups.electrical.visible = layers.electrical || layers.framing
+    b.groups.plumbing.visible = layers.plumbing || layers.framing
     b.groups.framing.visible = layers.framing
     for (const pl of b.pointLights) pl.visible = layers.lights
     for (const fm of b.fixtureMats) fm.emissiveIntensity = layers.lights ? 1.2 : 0.08
@@ -611,7 +673,7 @@ export default function Plan3DViewer({
       wm.needsUpdate = true
     }
     for (const material of b.systemMats) material.emissiveIntensity = 0.1 + systemGlow / 70
-  }, [layers, cutaway, systemGlow])
+  }, [layers, cutaway, systemGlow, sceneVersion])
 
   const chips: [Layer, string][] = [
     ['lights', 'Lights on'],

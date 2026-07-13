@@ -11,6 +11,7 @@ import {
   layoutPower,
   patchDeviceEdit,
   patchFurnitureEdit,
+  replaceFurniture,
   sheetEditableLayers,
   sheetTransform,
   snapPlanOffset,
@@ -20,7 +21,7 @@ import {
   type SheetKind,
   type SheetTheme,
 } from '../lib/drawing'
-import { layoutFurniture, planRoomModels, type ModelPlacement } from '../lib/modelKit'
+import { BED_SIZES, layoutFurniture, planRoomModels, type ModelPlacement } from '../lib/modelKit'
 import { evaluateProposedLight, type CodeProfile } from '../lib/codeChecks'
 
 type AnyDevice = (PowerDevice & { layer: 'power' }) | (LightDevice & { layer: 'lighting' })
@@ -304,6 +305,36 @@ export default function SheetEditor({
             <button onClick={() => onChange(patchFurnitureEdit(edits, selectedFurniture.id, { rotation: (selectedFurniture.rotation ?? 0) - Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan hover:border-cyan">↺ Rotate 15°</button>
             <button onClick={() => onChange(patchFurnitureEdit(edits, selectedFurniture.id, { rotation: (selectedFurniture.rotation ?? 0) + Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan hover:border-cyan">Rotate 15° ↻</button>
           </div>
+          {selectedFurniture.kind === 'bed' && (
+            <div className="mt-3">
+              <p className="font-mono text-[8px] uppercase tracking-wider text-muted">Bed size</p>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                {BED_SIZES.map((size) => {
+                  const isCurrent =
+                    Math.abs(size.width - selectedFurniture.width) < 0.1 &&
+                    Math.abs(size.depth - selectedFurniture.depth) < 0.1
+                  return (
+                    <button
+                      key={size.label}
+                      disabled={isCurrent}
+                      onClick={() => {
+                        const center = {
+                          x: selectedFurniture.x + selectedFurniture.width / 2,
+                          y: selectedFurniture.y + selectedFurniture.depth / 2,
+                        }
+                        const id = `add-bed-${Date.now().toString(36)}`
+                        onChange(replaceFurniture(edits, selectedFurniture.id, center, { id, kind: 'bed', width: size.width, depth: size.depth, rotation: selectedFurniture.rotation }))
+                        setSelected(`furniture:${id}`)
+                      }}
+                      className={`rounded border py-1.5 text-[10px] ${isCurrent ? 'border-cyan/50 bg-cyan/10 text-cyan' : 'border-line text-muted hover:border-cyan hover:text-white'}`}
+                    >
+                      {size.label.replace(' bed', '')}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <button onClick={() => onChange(patchFurnitureEdit(edits, selectedFurniture.id, { dx: 0, dy: 0, rotation: baseFurniture.find((item) => item.id === selectedFurniture.id)?.rotation ?? 0 }))} className="mt-2 w-full rounded border border-line py-2 text-muted hover:text-white">Reset object position</button>
           <button onClick={() => { onChange(patchFurnitureEdit(edits, selectedFurniture.id, { removed: true })); setSelected(null) }} className="mt-2 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
         </div>

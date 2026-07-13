@@ -361,11 +361,56 @@ export interface FurnitureEdit {
   removed?: boolean
 }
 
+/** A user-inserted furniture piece (catalog item placed on the plan). */
+export interface FurnitureAddition {
+  id: string
+  kind: string
+  x: number
+  y: number
+  width: number
+  depth: number
+  rotation?: number
+}
+
 export interface PlanEdits {
   power?: Record<string, DeviceEdit>
   lighting?: Record<string, DeviceEdit>
   furniture?: Record<string, FurnitureEdit>
   additions?: { power?: PowerDevice[]; lighting?: LightDevice[] }
+  furnitureAdditions?: FurnitureAddition[]
+}
+
+/** Insert a catalog furniture piece centered at (cx, cy). */
+export function addFurniture(
+  edits: PlanEdits,
+  item: Omit<FurnitureAddition, 'x' | 'y'>,
+  cx: number,
+  cy: number,
+): PlanEdits {
+  const placed: FurnitureAddition = {
+    ...item,
+    x: snapPlanOffset(cx - item.width / 2),
+    y: snapPlanOffset(cy - item.depth / 2),
+  }
+  return { ...edits, furnitureAdditions: [...(edits.furnitureAdditions ?? []), placed] }
+}
+
+/**
+ * Swap a furniture piece for a catalog variant (e.g. king bed → queen bed),
+ * keeping the original piece's center point.
+ */
+export function replaceFurniture(
+  edits: PlanEdits,
+  oldId: string,
+  oldCenter: FtPt,
+  item: Omit<FurnitureAddition, 'x' | 'y'>,
+): PlanEdits {
+  const removed = patchFurnitureEdit(edits, oldId, { removed: true })
+  const withoutOldAddition = {
+    ...removed,
+    furnitureAdditions: (removed.furnitureAdditions ?? []).filter((f) => f.id !== oldId),
+  }
+  return addFurniture(withoutOldAddition, item, oldCenter.x, oldCenter.y)
 }
 
 export type EditableLayer = 'power' | 'lighting'

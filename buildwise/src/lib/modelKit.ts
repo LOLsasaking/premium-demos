@@ -101,8 +101,42 @@ export function planRoomModels(model: PlanModel): ModelPlacement[] {
   return finish(out)
 }
 
+/** Insertable furniture catalog — real footprints, grouped for the UI. */
+export interface CatalogItem {
+  label: string
+  kind: ModelKind
+  width: number
+  depth: number
+  group: 'beds' | 'seating' | 'tables' | 'storage'
+}
+
+export const FURNITURE_CATALOG: CatalogItem[] = [
+  { label: 'Twin bed', kind: 'bed', width: 3.25, depth: 6.25, group: 'beds' },
+  { label: 'Full bed', kind: 'bed', width: 4.5, depth: 6.25, group: 'beds' },
+  { label: 'Queen bed', kind: 'bed', width: 5, depth: 6.67, group: 'beds' },
+  { label: 'King bed', kind: 'bed', width: 6.33, depth: 6.67, group: 'beds' },
+  { label: 'Cal-King bed', kind: 'bed', width: 6, depth: 7, group: 'beds' },
+  { label: 'Sofa', kind: 'sofa', width: 6.5, depth: 3, group: 'seating' },
+  { label: 'Armchair', kind: 'sofa', width: 3, depth: 2.8, group: 'seating' },
+  { label: 'Dining table', kind: 'dining-table', width: 5.3, depth: 4.6, group: 'tables' },
+  { label: 'Coffee table', kind: 'coffee-table', width: 3.6, depth: 2, group: 'tables' },
+  { label: 'Dresser', kind: 'base-cabinet', width: 5, depth: 1.7, group: 'storage' },
+  { label: 'Nightstand', kind: 'base-cabinet', width: 1.8, depth: 1.5, group: 'storage' },
+]
+
+export const BED_SIZES = FURNITURE_CATALOG.filter((item) => item.group === 'beds')
+
 export function layoutFurniture(model: PlanModel, edits?: PlanEdits): ModelPlacement[] {
-  return planRoomModels(model)
+  const added: ModelPlacement[] = (edits?.furnitureAdditions ?? []).map((f) => ({
+    id: f.id,
+    kind: f.kind as ModelKind,
+    x: f.x,
+    y: f.y,
+    width: f.width,
+    depth: f.depth,
+    rotation: f.rotation ?? 0,
+  }))
+  return [...planRoomModels(model), ...added]
     .filter((placement) => !edits?.furniture?.[placement.id]?.removed)
     .map((placement) => {
       const edit = edits?.furniture?.[placement.id]

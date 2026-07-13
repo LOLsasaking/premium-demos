@@ -10,13 +10,16 @@ import {
   type Answers,
 } from './engine'
 import {
+  addFurniture,
   buildModel,
   generateSheetSet,
   hasPlanDrawing,
   layoutPower,
+  replaceFurniture,
   type PlanEdits,
   type Sheet,
 } from '../lib/drawing'
+import { BED_SIZES, FURNITURE_CATALOG, layoutFurniture } from '../lib/modelKit'
 import { generateDXF } from '../lib/dxf'
 
 /** Answer every question with its first choice until the interview completes. */
@@ -321,5 +324,59 @@ describe('describeUploads', () => {
   })
   it('is empty for no uploads', () => {
     expect(describeUploads([])).toBe('')
+  })
+})
+
+describe('furniture catalog', () => {
+  const HOUSE: Answers = {
+    project: 'newbuild',
+    structure: 'wood',
+    area: 'xl',
+    gas: 'no',
+    budget: 'mid',
+    tenure: 'long',
+    ev: 'yes',
+    smart: 'full',
+    solar: 'now',
+    region: 'CA',
+    beds: '3',
+    baths: '2',
+    stories: '1',
+    garage: '2',
+  }
+  const pkg = generatePackage(HOUSE)
+  const model = buildModel(HOUSE, pkg)
+
+  it('offers all standard bed sizes with real footprints', () => {
+    expect(BED_SIZES.map((b) => b.label)).toEqual([
+      'Twin bed',
+      'Full bed',
+      'Queen bed',
+      'King bed',
+      'Cal-King bed',
+    ])
+    const king = BED_SIZES.find((b) => b.label === 'King bed')!
+    expect(king.width).toBeCloseTo(6.33)
+    expect(FURNITURE_CATALOG.length).toBeGreaterThan(8)
+  })
+
+  it('inserts catalog furniture centered at the requested point', () => {
+    const edits = addFurniture({}, { id: 'add-1', kind: 'bed', width: 5, depth: 6.67 }, 20, 12)
+    const placed = layoutFurniture(model, edits).find((f) => f.id === 'add-1')!
+    expect(placed.x + placed.width / 2).toBeCloseTo(20, 0)
+    expect(placed.y + placed.depth / 2).toBeCloseTo(12, 0)
+  })
+
+  it('replaces a bed with a different size, preserving the center', () => {
+    const base = layoutFurniture(model)
+    const bed = base.find((f) => f.kind === 'bed')!
+    const center = { x: bed.x + bed.width / 2, y: bed.y + bed.depth / 2 }
+    const king = BED_SIZES.find((b) => b.label === 'King bed')!
+    const edits = replaceFurniture({}, bed.id, center, { id: 'add-king', kind: 'bed', width: king.width, depth: king.depth })
+    const after = layoutFurniture(model, edits)
+    expect(after.find((f) => f.id === bed.id)).toBeUndefined()
+    const replaced = after.find((f) => f.id === 'add-king')!
+    expect(replaced.width).toBeCloseTo(king.width)
+    expect(replaced.x + replaced.width / 2).toBeCloseTo(center.x, 0)
   })
 })
