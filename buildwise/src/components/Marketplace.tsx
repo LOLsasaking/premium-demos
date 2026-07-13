@@ -5,7 +5,7 @@ const pros = [
   { role: 'Master Electricians', note: 'Verify load calcs & panel schedules' },
   { role: 'Licensed Plumbers', note: 'Review DWV & supply sizing' },
   { role: 'HVAC Contractors', note: 'Confirm Manual J & equipment' },
-  { role: 'Architects', note: 'Seal permit-ready drawing sets' },
+  { role: 'Architects', note: 'Review and develop drawing sets' },
   { role: 'Interior Designers', note: 'Refine finishes & selections' },
 ]
 
@@ -16,11 +16,11 @@ export default function Marketplace() {
         <div className="reveal mx-auto max-w-2xl text-center">
           <p className="eyebrow">Marketplace</p>
           <h2 className="mt-4 font-display text-4xl font-700 tracking-tight md:text-5xl">
-            AI drafts it. Humans stamp it.
+            AI accelerates it. Professionals review it.
           </h2>
           <p className="mt-4 text-muted">
-            When you need a permit-ready, stamped drawing, BuildWise routes your project to a vetted,
-            licensed professional in your area for review, finalization and sign-off.
+            When a project needs licensed review, Cadvora can route the coordinated package to a
+            qualified professional for the appropriate review and next-stage documentation.
           </p>
         </div>
 

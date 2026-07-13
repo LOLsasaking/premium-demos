@@ -2,7 +2,7 @@
  * AI integration seam.
  *
  * The MVP ships with a deterministic local engine (src/interview/engine.ts) so
- * it runs with zero configuration. When VITE_BUILDWISE_API_URL is set, these
+ * it runs with zero configuration. When VITE_CADVORA_API_URL is set, these
  * functions call the real Claude-backed API (see ../../server) and gracefully
  * fall back to the local engine if the network or model call fails — so the UI
  * never breaks.
@@ -16,7 +16,7 @@ import {
   nextQuestion as localNext,
 } from '../interview/engine'
 
-const API = import.meta.env.VITE_BUILDWISE_API_URL
+const API = import.meta.env.VITE_CADVORA_API_URL || import.meta.env.VITE_BUILDWISE_API_URL
 const USE_REMOTE = Boolean(API)
 
 async function post<T>(path: string, body: unknown): Promise<T> {

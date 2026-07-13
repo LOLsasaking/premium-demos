@@ -6,9 +6,13 @@ import Disciplines from './components/Disciplines'
 import DigitalTwin from './components/DigitalTwin'
 import Marketplace from './components/Marketplace'
 import Pricing from './components/Pricing'
-import Roadmap from './components/Roadmap'
 import Waitlist from './components/Waitlist'
 import Footer from './components/Footer'
+import CredibilityStrip from './components/CredibilityStrip'
+import ProjectExample from './components/ProjectExample'
+import TrustHandoff from './components/TrustHandoff'
+import ExampleProjects from './components/ExampleProjects'
+import Faq from './components/Faq'
 import { useReveal } from './lib/useReveal'
 
 export default function App() {
@@ -21,13 +25,17 @@ export default function App() {
       <Nav />
       <main>
         <Hero />
+        <CredibilityStrip />
+        <ProjectExample />
         <HowItWorks />
-        <InterviewStudio />
         <Disciplines />
         <DigitalTwin />
+        <TrustHandoff />
+        <ExampleProjects />
+        <InterviewStudio />
         <Marketplace />
         <Pricing />
-        <Roadmap />
+        <Faq />
         <Waitlist />
       </main>
       <Footer />

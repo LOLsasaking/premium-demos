@@ -29,10 +29,10 @@ export default function Waitlist() {
           <div className="pointer-events-none absolute -bottom-24 left-1/2 h-64 w-96 -translate-x-1/2 rounded-full bg-build/20 blur-[120px]" />
           <div className="relative">
             <h2 className="font-display text-4xl font-700 tracking-tight md:text-5xl">
-              Upload your house. Get a plan.
+              Turn the next brief into a coordinated plan.
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted">
-              Join the early-access list. We’re onboarding homeowners and licensed pros city by city.
+              Join the Cadvora beta for product access, updates and guided onboarding.
             </p>
 
             {status === 'sent' ? (

@@ -28,7 +28,7 @@ import { AREA_SQFT, type Answers, type ProjectPackage } from '../interview/engin
 
 export type SheetTheme = 'blueprint' | 'autocad' | 'paper'
 
-export type SheetKind = 'power' | 'lighting' | 'plumbing' | 'hvac' | 'framing'
+export type SheetKind = 'construction' | 'power' | 'lighting' | 'plumbing' | 'hvac' | 'framing'
 
 export interface Sheet {
   id: SheetKind
@@ -38,6 +38,7 @@ export interface Sheet {
 }
 
 const SHEET_META: Record<SheetKind, { no: string; name: string }> = {
+  construction: { no: 'C-1', name: 'CONSTRUCTION PLAN' },
   power: { no: 'E-1', name: 'POWER PLAN' },
   lighting: { no: 'E-2', name: 'LIGHTING PLAN' },
   plumbing: { no: 'P-1', name: 'PLUMBING PLAN' },
@@ -129,7 +130,7 @@ export interface PlanModel {
   island: { x: number; y: number; w: number; h: number } | null
   door: { wall: Wall; pos: number; width: number } // pos = ft along wall
   window: { wall: Wall; pos: number; width: number }
-  appliances: { x: number; y: number; label: string }[]
+  appliances: { x: number; y: number; label: string; w?: number; h?: number }[]
   hasPlumbing: boolean
   hasEV: boolean
   /** Whole-house mode: the room program (ground-up builds). */
@@ -142,10 +143,15 @@ export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
   const sqft = AREA_SQFT[a.area] ?? 275
   // Aspect from analyzed upload when present, else ~4:3.
   const aspect = clamp(parseFloat(a._aspect ?? '') || 4 / 3, 0.8, 2.0)
-  const wFt = Math.max(10, Math.round(Math.sqrt(sqft * aspect)))
-  const hFt = Math.max(9, Math.round(sqft / wFt))
+  let wFt = Math.max(10, Math.round(Math.sqrt(sqft * aspect)))
+  let hFt = Math.max(9, Math.round(sqft / wFt))
 
   const isKitchen = a.project === 'kitchen'
+  const isBathroom = a.project === 'bathroom'
+  if (isBathroom) {
+    const dimensions: Record<string, [number, number]> = { s: [8, 6], m: [10, 8], l: [12, 9], xl: [14, 10] }
+    ;[wFt, hFt] = dimensions[a.area] ?? dimensions.m
+  }
   const counters: PlanModel['counters'] = []
   let island: PlanModel['island'] = null
   const appliances: PlanModel['appliances'] = []
@@ -164,6 +170,11 @@ export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
     appliances.push({ x: island.x + island.w * 0.5, y: island.y + island.h * 0.45, label: 'CT' })
     appliances.push({ x: island.x + island.w * 0.22, y: island.y + island.h * 0.5, label: 'MICRO' })
     appliances.push({ x: wFt - 3, y: hFt - 3.2, label: 'REF' })
+  } else if (isBathroom) {
+    counters.push({ x: wFt - 2.2, y: 0.35, w: 1.85, h: 3.1 })
+    appliances.push({ x: 1.75, y: 1.75, label: 'SHWR', w: 3, h: 3 })
+    appliances.push({ x: 2, y: hFt - 1.75, label: 'WC', w: 1.7, h: 2.2 })
+    appliances.push({ x: wFt - 1.3, y: 1.8, label: 'LAV', w: 2.4, h: 1.6 })
   }
 
   return {
@@ -173,7 +184,7 @@ export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
     counters,
     island,
     door: { wall: 'E', pos: hFt * 0.7, width: 3 },
-    window: { wall: 'W', pos: isKitchen ? hFt * 0.32 - 1.5 : hFt * 0.35, width: 3.5 },
+    window: { wall: 'W', pos: isKitchen ? hFt * 0.32 - 1.5 : hFt * 0.35, width: isBathroom ? 2.5 : 3.5 },
     appliances,
     hasPlumbing: pkg.disciplines.includes('plumbing'),
     hasEV: a.ev === 'yes' || a.ev === 'future',
@@ -305,7 +316,7 @@ function buildHouseModel(a: Answers, pkg: ProjectPackage): PlanModel {
   for (const r of rooms.filter((r) => r.type === 'bath' || r.type === 'powder')) {
     appliances.push({ x: r.x + 1.1, y: r.y + 1.3, label: 'WC' })
     appliances.push({ x: r.x + r.w - 1.1, y: r.y + 1.1, label: 'LAV' })
-    if (r.type === 'bath' && r.w >= 5.5) appliances.push({ x: r.x + r.w / 2, y: r.y + r.h - 1.4, label: 'TUB' })
+    if (r.type === 'bath' && r.w >= 5.5) appliances.push({ x: r.x + r.w / 2, y: r.y + r.h - 1.8, label: 'SHWR', w: 3, h: 3 })
   }
   appliances.push({ x: cars ? garW - 1.6 : W - 1.6, y: cars ? H - 1.6 : 1.6, label: 'WH' })
 
@@ -340,9 +351,103 @@ export interface DeviceEdit {
   dy?: number
   removed?: boolean
   circuit?: string
+  wetLocationRated?: boolean
 }
 
-export type PlanEdits = Partial<Record<'power' | 'lighting', Record<string, DeviceEdit>>>
+export interface FurnitureEdit {
+  dx?: number
+  dy?: number
+  rotation?: number
+  removed?: boolean
+}
+
+/** A user-inserted furniture piece (catalog item placed on the plan). */
+export interface FurnitureAddition {
+  id: string
+  kind: string
+  x: number
+  y: number
+  width: number
+  depth: number
+  rotation?: number
+}
+
+export interface PlanEdits {
+  power?: Record<string, DeviceEdit>
+  lighting?: Record<string, DeviceEdit>
+  furniture?: Record<string, FurnitureEdit>
+  additions?: { power?: PowerDevice[]; lighting?: LightDevice[] }
+  furnitureAdditions?: FurnitureAddition[]
+}
+
+/** Insert a catalog furniture piece centered at (cx, cy). */
+export function addFurniture(
+  edits: PlanEdits,
+  item: Omit<FurnitureAddition, 'x' | 'y'>,
+  cx: number,
+  cy: number,
+): PlanEdits {
+  const placed: FurnitureAddition = {
+    ...item,
+    x: snapPlanOffset(cx - item.width / 2),
+    y: snapPlanOffset(cy - item.depth / 2),
+  }
+  return { ...edits, furnitureAdditions: [...(edits.furnitureAdditions ?? []), placed] }
+}
+
+/**
+ * Swap a furniture piece for a catalog variant (e.g. king bed → queen bed),
+ * keeping the original piece's center point.
+ */
+export function replaceFurniture(
+  edits: PlanEdits,
+  oldId: string,
+  oldCenter: FtPt,
+  item: Omit<FurnitureAddition, 'x' | 'y'>,
+): PlanEdits {
+  const removed = patchFurnitureEdit(edits, oldId, { removed: true })
+  const withoutOldAddition = {
+    ...removed,
+    furnitureAdditions: (removed.furnitureAdditions ?? []).filter((f) => f.id !== oldId),
+  }
+  return addFurniture(withoutOldAddition, item, oldCenter.x, oldCenter.y)
+}
+
+export type EditableLayer = 'power' | 'lighting'
+
+export function snapPlanOffset(value: number): number {
+  return Math.round(value * 4) / 4
+}
+
+export function deviceEditOrigin<T extends FtPt & { id: string }>(baseDevices: T[], current: T): FtPt {
+  const base = baseDevices.find((device) => device.id === current.id)
+  return { x: base?.x ?? current.x, y: base?.y ?? current.y }
+}
+
+export function patchDeviceEdit(
+  edits: PlanEdits,
+  layer: EditableLayer,
+  id: string,
+  update: Partial<DeviceEdit>,
+): PlanEdits {
+  return {
+    ...edits,
+    [layer]: {
+      ...(edits[layer] ?? {}),
+      [id]: { ...edits[layer]?.[id], ...update },
+    },
+  }
+}
+
+export function patchFurnitureEdit(edits: PlanEdits, id: string, update: Partial<FurnitureEdit>): PlanEdits {
+  return {
+    ...edits,
+    furniture: {
+      ...(edits.furniture ?? {}),
+      [id]: { ...edits.furniture?.[id], ...update },
+    },
+  }
+}
 
 export interface PowerDevice extends FtPt {
   id: string
@@ -356,6 +461,32 @@ export interface LightDevice extends FtPt {
   kind: 'can' | 'pendant' | 'uc' | 'switch'
   label?: string
   circuit?: string
+  wetLocationRated?: boolean
+}
+
+export function addPlanDevice(
+  edits: PlanEdits,
+  layer: 'power',
+  device: PowerDevice,
+): PlanEdits
+export function addPlanDevice(
+  edits: PlanEdits,
+  layer: 'lighting',
+  device: LightDevice,
+): PlanEdits
+export function addPlanDevice(
+  edits: PlanEdits,
+  layer: EditableLayer,
+  device: PowerDevice | LightDevice,
+): PlanEdits {
+  const current = layer === 'power' ? edits.additions?.power ?? [] : edits.additions?.lighting ?? []
+  return {
+    ...edits,
+    additions: {
+      ...edits.additions,
+      [layer]: [...current, device],
+    },
+  } as PlanEdits
 }
 
 /** Applies user edits to a generated device list (ids refer to base order). */
@@ -369,7 +500,7 @@ function applyEdits<T extends { id: string; x: number; y: number; circuit?: stri
     .map((d) => {
       const e = edits[d.id]
       if (!e) return d
-      return { ...d, x: d.x + (e.dx ?? 0), y: d.y + (e.dy ?? 0), circuit: e.circuit ?? d.circuit }
+      return { ...d, x: d.x + (e.dx ?? 0), y: d.y + (e.dy ?? 0), circuit: e.circuit ?? d.circuit, ...(e.wetLocationRated === undefined ? {} : { wetLocationRated: e.wetLocationRated }) }
     })
 }
 
@@ -428,7 +559,7 @@ export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
       ...h.plain.map((pt, i) => ({ ...pt, id: `p${i}`, kind: 'recep' as const })),
       ...h.dedicated.map((d, i) => ({ x: d.x, y: d.y, id: `d${i}`, kind: 'dedicated' as const, label: d.label })),
     ]
-    return applyEdits(devices, edits?.power)
+    return applyEdits([...devices, ...(edits?.additions?.power ?? [])], edits?.power)
   }
   const gfci: FtPt[] = []
   const plain: FtPt[] = []
@@ -461,7 +592,10 @@ export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
         else plain.push({ x: m.wFt - inset, y: pos })
       }
     }
-    if (m.hasPlumbing) gfci.push({ x: 1.2, y: m.window.pos + 1.5 })
+    if (m.hasPlumbing) {
+      const lav = m.appliances.find((ap) => ap.label === 'LAV' || ap.label === 'SINK')
+      gfci.push(lav ? { x: Math.max(0.4, lav.x - 1), y: lav.y } : { x: 1.2, y: m.window.pos + 1.5 })
+    }
   }
 
   const dedicated: { x: number; y: number; label: string }[] = []
@@ -479,7 +613,7 @@ export function layoutPower(m: PlanModel, edits?: PlanEdits): PowerDevice[] {
     ...plain.map((pt, i) => ({ ...pt, id: `p${i}`, kind: 'recep' as const })),
     ...dedicated.map((d, i) => ({ x: d.x, y: d.y, id: `d${i}`, kind: 'dedicated' as const, label: d.label })),
   ]
-  return applyEdits(devices, edits?.power)
+  return applyEdits([...devices, ...(edits?.additions?.power ?? [])], edits?.power)
 }
 
 export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
@@ -509,7 +643,7 @@ export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
       ...ucs.map((pt, i) => ({ ...pt, id: `u${i}`, kind: 'uc' as const })),
       ...switches.map((sw, i) => ({ x: sw.x, y: sw.y, id: `s${i}`, kind: 'switch' as const, label: sw.label })),
     ]
-    return applyEdits(devices, edits?.lighting)
+    return applyEdits([...devices, ...(edits?.additions?.lighting ?? [])], edits?.lighting)
   }
   const cans: FtPt[] = []
   const cx = m.wFt / 2
@@ -546,7 +680,7 @@ export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
     ...ucs.map((pt, i) => ({ ...pt, id: `u${i}`, kind: 'uc' as const })),
     ...switches.map((sw, i) => ({ x: sw.x, y: sw.y, id: `s${i}`, kind: 'switch' as const, label: sw.label })),
   ]
-  return applyEdits(devices, edits?.lighting)
+  return applyEdits([...devices, ...(edits?.additions?.lighting ?? [])], edits?.lighting)
 }
 
 export function hasPlanDrawing(pkg: ProjectPackage): boolean {
@@ -592,12 +726,27 @@ export function generateSheetSet(
 ): Sheet[] {
   const model = buildModel(a, pkg)
   const has = (d: string) => pkg.disciplines.includes(d as ProjectPackage['disciplines'][number])
-  const kinds: SheetKind[] = []
+  const kinds: SheetKind[] = ['construction']
   if (has('electrical') || has('smart')) kinds.push('power', 'lighting')
   if (has('plumbing')) kinds.push('plumbing')
   if (has('hvac')) kinds.push('hvac')
   if (has('structural')) kinds.push('framing')
   return kinds.map((k) => ({ id: k, ...SHEET_META[k], svg: renderSheet(model, pkg, theme, k, edits) }))
+}
+
+export function sheetEditableLayers(kind: SheetKind): Array<'power' | 'lighting'> {
+  if (kind === 'power') return ['power']
+  if (kind === 'lighting') return ['lighting']
+  return []
+}
+
+export function viewerLayerPreset(kind: SheetKind) {
+  return {
+    lights: kind === 'lighting',
+    electrical: kind === 'power',
+    plumbing: kind === 'plumbing',
+    framing: kind === 'framing',
+  }
 }
 
 /** Architecture-only sheet (no devices/legend) — the editor's backdrop. */
@@ -636,7 +785,8 @@ function renderSheet(
 
   drawRoom(c)
   if (!shellOnly) {
-    if (kind === 'power') drawPower(c, edits)
+    if (kind === 'construction') drawConstruction(c)
+    else if (kind === 'power') drawPower(c, edits)
     else if (kind === 'lighting') drawLighting(c, edits)
     else if (kind === 'plumbing') drawPlumbing(c)
     else if (kind === 'hvac') drawHvac(c)
@@ -648,6 +798,14 @@ function renderSheet(
 
   const meta = SHEET_META[kind]
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${meta.no} ${meta.name.toLowerCase()} sheet">${c.parts.join('')}</svg>`
+}
+
+function drawConstruction(c: Ctx) {
+  const { p } = c
+  c.legend.push([`<path d="M2 16V4h16v12" fill="none" stroke="${p.wall}" stroke-width="2.2"/>`, 'wall / partition'])
+  c.legend.push([`<path d="M3 17V5h12M3 17A12 12 0 0 1 15 5" fill="none" stroke="${p.dim}" stroke-width="1.2"/>`, 'door and swing'])
+  c.legend.push([`<line x1="2" y1="7" x2="18" y2="7" stroke="${p.wall}"/><line x1="2" y1="11" x2="18" y2="11" stroke="${p.wall}"/><line x1="2" y1="15" x2="18" y2="15" stroke="${p.wall}"/>`, 'window'])
+  c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.dim}"/><path d="M2 5v10M18 5v10" stroke="${p.dim}"/>`, 'dimension'])
 }
 
 /* ---------- room shell, counters, door, window, dims -------------- */
@@ -834,7 +992,7 @@ function wallPoint(c: Ctx, wall: Wall, pos: number): Pt {
   return ft(c, m.wFt, pos)
 }
 
-function drawAppliance(c: Ctx, ap: { x: number; y: number; label: string }) {
+function drawAppliance(c: Ctx, ap: { x: number; y: number; label: string; w?: number; h?: number }) {
   const { p, s } = c
   const t = ft(c, ap.x, ap.y)
   const ink = p.wall
@@ -873,6 +1031,16 @@ function drawAppliance(c: Ctx, ap: { x: number; y: number; label: string }) {
     c.parts.push(
       `<rect x="${t.x - 1.3 * s}" y="${t.y - 0.65 * s}" width="${2.6 * s}" height="${1.3 * s}" rx="${0.3 * s}" fill="none" stroke="${ink}" stroke-width="1.2"/>`,
       `<rect x="${t.x - 1.1 * s}" y="${t.y - 0.45 * s}" width="${2.2 * s}" height="${0.9 * s}" rx="${0.3 * s}" fill="none" stroke="${ink}" stroke-width="0.9"/>`,
+    )
+  } else if (ap.label === 'SHWR') {
+    const w = (ap.w ?? 3) * s
+    const h = (ap.h ?? 3) * s
+    c.parts.push(
+      `<rect x="${t.x - w / 2}" y="${t.y - h / 2}" width="${w}" height="${h}" fill="none" stroke="${ink}" stroke-width="1.3"/>`,
+      `<line x1="${t.x - w / 2}" y1="${t.y - h / 2}" x2="${t.x + w / 2}" y2="${t.y + h / 2}" stroke="${ink}" stroke-width="0.8"/>`,
+      `<line x1="${t.x + w / 2}" y1="${t.y - h / 2}" x2="${t.x - w / 2}" y2="${t.y + h / 2}" stroke="${ink}" stroke-width="0.8"/>`,
+      `<circle cx="${t.x}" cy="${t.y}" r="${0.16 * s}" fill="none" stroke="${ink}" stroke-width="1"/>`,
+      txt(t.x, t.y + h / 2 + 12, 'SHOWER', c.p, 'middle'),
     )
   } else if (ap.label === 'WH') {
     c.parts.push(
@@ -1094,6 +1262,52 @@ function drawPlumbing(c: Ctx) {
     c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.leg}" stroke-width="1.2" stroke-dasharray="3 4"/>`, 'vent (1-1/2")'])
     c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="none" stroke="${p.wall}" stroke-width="1.4"/><text x="9" y="13" fill="${p.text}" font-size="6.5" text-anchor="middle" font-family="monospace">WH</text>`, 'water heater'])
     c.legend.push([`<circle cx="9" cy="10" r="5.5" fill="none" stroke="${p.circuit}" stroke-width="1.4"/><line x1="5" y1="14" x2="13" y2="6" stroke="${p.circuit}" stroke-width="1.2"/>`, 'stack + cleanout'])
+    return
+  }
+  const bathroomFixtures = m.appliances.filter((ap) => ['LAV', 'WC', 'SHWR', 'TUB'].includes(ap.label))
+  if (bathroomFixtures.some((fixture) => fixture.label === 'SHWR' || fixture.label === 'TUB')) {
+    const meter = ft(c, m.wFt * 0.52, m.hFt)
+    const wh = ft(c, m.wFt - 1.15, m.hFt - 1.1)
+    const stack = ft(c, 0.55, m.hFt - 0.65)
+    const coldY = ft(c, 0, m.hFt - 0.55).y
+    const hotY = coldY - 10
+    const drainY = coldY - 26
+
+    c.parts.push(
+      pipe([meter, { x: meter.x, y: coldY }, { x: stack.x + 20, y: coldY }], p.device, '', 1.8),
+      pipe([{ x: wh.x, y: wh.y - 12 }, { x: wh.x, y: hotY }, { x: stack.x + 20, y: hotY }], p.light, '7 4', 1.6),
+      txt(meter.x + 8, coldY + 15, '3/4" CW MAIN', p),
+      txt(wh.x - 92, hotY - 6, '3/4" HW MAIN', p),
+    )
+
+    for (const fixture of bathroomFixtures) {
+      const target = ft(c, fixture.x, fixture.y)
+      const needsHot = fixture.label !== 'WC'
+      const drainSize = fixture.label === 'WC' ? '3"' : fixture.label === 'LAV' ? '1-1/2"' : '2"'
+      c.parts.push(pipe([{ x: target.x + 5, y: coldY }, { x: target.x + 5, y: target.y + 8 }], p.device, '', 1.35))
+      if (needsHot) c.parts.push(pipe([{ x: target.x - 5, y: hotY }, { x: target.x - 5, y: target.y + 8 }], p.light, '7 4', 1.25))
+      c.parts.push(
+        pipe([target, { x: target.x, y: drainY }, { x: stack.x + 12, y: drainY }], p.circuit, '10 4 2 4', fixture.label === 'WC' ? 2.8 : 2.2),
+        txt(target.x + 8, target.y - 10, `${drainSize} ${fixture.label}`, p),
+      )
+      if (fixture.label === 'LAV') {
+        c.parts.push(pipe([target, { x: target.x, y: Math.max(c.y0 + 18, target.y - 62) }], p.leg, '3 4', 1.2))
+        c.parts.push(txt(target.x + 8, target.y - 48, '1-1/2" VENT', p))
+      }
+    }
+
+    c.parts.push(
+      `<circle cx="${wh.x}" cy="${wh.y}" r="15" fill="${p.bg}" stroke="${p.wall}" stroke-width="1.6"/><text x="${wh.x}" y="${wh.y + 4}" fill="${p.text}" font-size="9.5" font-family="monospace" text-anchor="middle">WH</text>`,
+      `<rect x="${meter.x - 7}" y="${meter.y - 7}" width="14" height="14" fill="${p.bg}" stroke="${p.device}" stroke-width="1.5"/>`,
+      txt(meter.x + 10, meter.y - 2, 'M', p),
+      `<circle cx="${stack.x}" cy="${stack.y}" r="7" fill="${p.bg}" stroke="${p.circuit}" stroke-width="1.6"/><line x1="${stack.x - 5}" y1="${stack.y + 5}" x2="${stack.x + 5}" y2="${stack.y - 5}" stroke="${p.circuit}" stroke-width="1.4"/>`,
+      txt(stack.x + 10, stack.y + 14, '3" STACK + CO', p),
+    )
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.device}" stroke-width="1.6"/>`, 'cold water (3/4")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.light}" stroke-width="1.6" stroke-dasharray="6 3"/>`, 'hot water (3/4")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.circuit}" stroke-width="2.4" stroke-dasharray="8 3 2 3"/>`, 'drain-waste (1-1/2"–3")'])
+    c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.leg}" stroke-width="1.2" stroke-dasharray="3 4"/>`, 'vent (1-1/2")'])
+    c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="none" stroke="${p.wall}" stroke-width="1.4"/><text x="9" y="13" fill="${p.text}" font-size="6.5" text-anchor="middle" font-family="monospace">WH</text>`, 'water heater'])
     return
   }
   // Fixture anchor points (ft): sink from the model or a default wet wall spot.
@@ -1384,6 +1598,18 @@ function dimLine(x1: number, y1: number, x2: number, y2: number, label: string, 
 
 /** General notes per trade — the code references a working pro expects. */
 const SHEET_NOTES: Record<SheetKind, string[]> = {
+  construction: [
+    '1. VERIFY ALL FIELD DIMENSIONS BEFORE',
+    '   ORDERING OR FABRICATION.',
+    '2. DO NOT SCALE DRAWINGS; USE WRITTEN',
+    '   DIMENSIONS AND FIELD CONDITIONS.',
+    '3. MAINTAIN REQUIRED EGRESS, FIRE-',
+    '   BLOCKING AND SMOKE/CO PROTECTION.',
+    '4. COORDINATE OPENINGS WITH STRUCTURAL,',
+    '   ELECTRICAL, PLUMBING AND MECHANICAL.',
+    '5. LOCAL PERMIT AND PROFESSIONAL REVIEW',
+    '   REQUIRED BEFORE CONSTRUCTION.',
+  ],
   power: [
     '1. ALL WORK PER NEC 2023 AND LOCAL',
     '   AMENDMENTS. PERMIT REQUIRED.',
@@ -1486,7 +1712,7 @@ function drawTitleBlock(c: Ctx, pkg: ProjectPackage, kind: SheetKind, theme: She
     `<line x1="${W * 0.72}" y1="${ty}" x2="${W * 0.72}" y2="${ty + 52}" stroke="${p.title}" stroke-width="1"/>`,
     `<line x1="${W * 0.87}" y1="${ty}" x2="${W * 0.87}" y2="${ty + 52}" stroke="${p.title}" stroke-width="1"/>`,
     `<text x="34" y="${ty + 21}" fill="${p.text}" font-size="12" font-family="monospace" font-weight="bold">${esc(pkg.headline.toUpperCase().slice(0, 46))}</text>`,
-    `<text x="34" y="${ty + 40}" fill="${p.dim}" font-size="10" font-family="monospace">BUILDWISE AI · ${theme === 'autocad' ? 'MODEL SPACE PREVIEW' : 'DRAFT PLAN SET'}</text>`,
+    `<text x="34" y="${ty + 40}" fill="${p.dim}" font-size="10" font-family="monospace">CADVORA · ${theme === 'autocad' ? 'MODEL SPACE PREVIEW' : 'DRAFT PLAN SET'}</text>`,
     `<text x="${W * 0.5 + 12}" y="${ty + 21}" fill="${p.text}" font-size="11" font-family="monospace">${sheetName}</text>`,
     `<text x="${W * 0.5 + 12}" y="${ty + 40}" fill="${p.dim}" font-size="9.5" font-family="monospace">SCALE: 1/4" = 1'-0" (NOM.)</text>`,
     `<text x="${W * 0.72 + 12}" y="${ty + 21}" fill="${p.light}" font-size="10" font-family="monospace">DRAFT</text>`,

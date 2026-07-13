@@ -36,17 +36,17 @@ function slug(s: string): string {
 }
 
 export function exportJSON(answers: Answers, pkg: ProjectPackage) {
-  const payload = { generatedBy: 'BuildWise AI', generatedAt: new Date().toISOString(), answers, package: pkg }
-  triggerDownload(`buildwise-${slug(pkg.headline)}.json`, JSON.stringify(payload, null, 2), 'application/json')
+  const payload = { generatedBy: 'Cadvora', generatedAt: new Date().toISOString(), answers, package: pkg }
+  triggerDownload(`cadvora-${slug(pkg.headline)}.json`, JSON.stringify(payload, null, 2), 'application/json')
 }
 
 export function exportHTML(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits) {
-  triggerDownload(`buildwise-${slug(pkg.headline)}.html`, buildDocument(answers, pkg, edits), 'text/html')
+  triggerDownload(`cadvora-${slug(pkg.headline)}.html`, buildDocument(answers, pkg, edits), 'text/html')
 }
 
 /** CAD handoff: a real .dxf on named layers, openable in AutoCAD/LibreCAD. */
 export function exportDXF(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits) {
-  triggerDownload(`buildwise-${slug(pkg.headline)}.dxf`, generateDXF(answers, pkg, edits), 'application/dxf')
+  triggerDownload(`cadvora-${slug(pkg.headline)}.dxf`, generateDXF(answers, pkg, edits), 'application/dxf')
 }
 
 function buildDocument(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits): string {
@@ -99,7 +99,7 @@ function buildDocument(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits)
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>${esc(pkg.headline)} — BuildWise AI</title>
+<title>${esc(pkg.headline)} — Cadvora</title>
 <style>
   :root{--ink:#0A0F1C;--blue:#2563EB;--amber:#B45309;--line:#e2e8f0;--muted:#64748b;}
   *{box-sizing:border-box;}
@@ -168,7 +168,7 @@ function buildDocument(answers: Answers, pkg: ProjectPackage, edits?: PlanEdits)
 
   <div class="actions no-print"><button onclick="window.print()">Print / Save as PDF</button></div>
 
-  <footer>© ${new Date().getFullYear()} BuildWise AI — illustrative planning document. All plans must be reviewed and stamped by appropriately licensed professionals and pass local plan review before construction or permitting.</footer>
+  <footer>© ${new Date().getFullYear()} Cadvora — illustrative planning document. All plans must be reviewed and stamped by appropriately licensed professionals and pass local plan review before construction or permitting.</footer>
 </div></body></html>`
 }
 

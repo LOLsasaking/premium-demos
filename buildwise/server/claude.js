@@ -1,5 +1,5 @@
 /**
- * Claude integration for BuildWise AI.
+ * Claude integration for Cadvora.
  *
  * Three jobs:
  *   1. interview()  — decide the next best question given answers so far,
@@ -12,7 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 
-const MODEL = process.env.BUILDWISE_MODEL || 'claude-opus-4-8'
+const MODEL = process.env.CADVORA_MODEL || process.env.BUILDWISE_MODEL || 'claude-opus-4-8'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -87,7 +87,7 @@ When you have enough, return exactly: {"done":true}`
 }
 
 export async function generate(answers) {
-  const system = `You are BuildWise AI, an AI architect and engineer for residential construction.
+  const system = `You are Cadvora, an AI architect and engineer for residential construction.
 Given the homeowner's answers, produce a coordinated construction package as JSON that EXACTLY
 matches this TypeScript type:
 

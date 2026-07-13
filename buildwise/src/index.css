@@ -8,6 +8,7 @@
   }
   body {
     @apply bg-ink text-mist font-body antialiased;
+    background-image: radial-gradient(circle at 50% -20%, rgba(31, 111, 235, 0.12), transparent 34%);
   }
   ::selection {
     background: rgba(59, 130, 246, 0.35);
@@ -25,14 +26,15 @@
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition;
   }
   .btn-build {
-    @apply btn bg-build text-ink;
-    box-shadow: 0 12px 30px -10px rgba(245, 158, 11, 0.55);
+    @apply btn bg-cyan text-ink;
+    box-shadow: 0 12px 30px -10px rgba(34, 211, 238, 0.45);
   }
   .btn-build:hover {
     transform: translateY(-2px);
   }
   .btn-blue {
     @apply btn bg-blueprint text-white;
+    box-shadow: 0 12px 34px -14px rgba(47, 107, 255, 0.8);
   }
   .btn-blue:hover {
     @apply bg-blue-600;
@@ -51,15 +53,29 @@
 /* Blueprint grid backdrop */
 .blueprint-grid {
   background-image:
-    linear-gradient(rgba(59, 130, 246, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(rgba(74, 134, 207, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74, 134, 207, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 .glass {
-  background: rgba(17, 24, 39, 0.6);
-  backdrop-filter: blur(12px);
+  background: rgba(5, 11, 20, 0.78);
+  backdrop-filter: blur(18px);
 }
+
+.hero-aura { background: radial-gradient(ellipse at 65% 20%, rgba(34,211,238,.1), transparent 38%), radial-gradient(ellipse at 38% 28%, rgba(47,107,255,.16), transparent 42%); }
+.text-gradient { color: #79dcff; background: linear-gradient(120deg,#fff 10%,#6ee7f9 45%,#5f86ff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.technical-pill { @apply inline-flex items-center gap-2 rounded-full border border-cyan/20 bg-cyan/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[.15em] text-cyan; }
+.status-dot { @apply h-1.5 w-1.5 rounded-full bg-cyan; box-shadow:0 0 12px #22d3ee; }
+.cad-window { @apply overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl; box-shadow:0 30px 90px -35px rgba(34,211,238,.35),0 0 0 1px rgba(87,158,255,.08); }
+.cad-window-bar { @apply flex h-11 items-center justify-between border-b border-line bg-[#091220] px-4 font-mono text-[9px] uppercase tracking-[.14em] text-muted; }
+.cad-window-bar div span { @apply block h-1.5 w-1.5 rounded-full bg-line; }
+.live-badge { @apply text-cyan; }
+.video-control { @apply absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-md border border-white/15 bg-ink/80 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-white backdrop-blur; }
+.cad-status { @apply flex items-center justify-between border-t border-line bg-[#091220] px-4 py-2.5 font-mono text-[9px] tracking-wider text-muted; }
+.cad-status .active { @apply text-cyan; }
+
+:focus-visible { outline:2px solid #22d3ee; outline-offset:3px; }
 
 /* Reveal-on-scroll */
 .reveal {

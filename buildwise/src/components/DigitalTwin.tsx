@@ -9,12 +9,12 @@ export default function DigitalTwin() {
     <section className="py-24 md:py-32">
       <div className="container-x grid items-center gap-12 lg:grid-cols-2">
         <div className="reveal">
-          <p className="eyebrow">Signature feature</p>
+          <p className="eyebrow">From 2D to 3D</p>
           <h2 className="mt-4 font-display text-4xl font-700 tracking-tight md:text-5xl">
-            A digital twin you can walk through
+            See the full project—not isolated drawings.
           </h2>
           <p className="mt-4 text-muted">
-            BuildWise assembles a real 3D model of your project. Orbit it, flip the lights on, trace
+            Cadvora assembles a real 3D model of your project. Orbit it, flip the lights on, trace
             the wiring inside the walls, follow the plumbing, or fade the drywall away and inspect
             the framing — before a single board is cut.
           </p>
