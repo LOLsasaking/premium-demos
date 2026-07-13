@@ -163,6 +163,7 @@ const QUESTIONS: Question[] = [
     prompt: 'A ground-up build — great. How many bedrooms are we designing?',
     when: (a) => a.project === 'newbuild',
     choices: [
+      { label: 'Tiny house', value: 'tiny', hint: '~420 sq ft studio — skips the size questions below' },
       { label: '2 bedrooms', value: '2' },
       { label: '3 bedrooms', value: '3' },
       { label: '4 bedrooms', value: '4' },
@@ -172,7 +173,7 @@ const QUESTIONS: Question[] = [
   {
     id: 'baths',
     prompt: 'And bathrooms?',
-    when: (a) => a.project === 'newbuild',
+    when: (a) => a.project === 'newbuild' && a.beds !== 'tiny',
     choices: [
       { label: '1 bath', value: '1' },
       { label: '2 baths', value: '2' },
@@ -183,7 +184,7 @@ const QUESTIONS: Question[] = [
   {
     id: 'stories',
     prompt: 'Single story or two?',
-    when: (a) => a.project === 'newbuild',
+    when: (a) => a.project === 'newbuild' && a.beds !== 'tiny',
     choices: [
       { label: 'Single story', value: '1' },
       { label: 'Two story', value: '2', hint: 'Plans show floor 1' },
@@ -192,7 +193,7 @@ const QUESTIONS: Question[] = [
   {
     id: 'garage',
     prompt: 'Garage?',
-    when: (a) => a.project === 'newbuild',
+    when: (a) => a.project === 'newbuild' && a.beds !== 'tiny',
     choices: [
       { label: 'No garage', value: '0' },
       { label: '1-car', value: '1' },
@@ -211,7 +212,8 @@ const QUESTIONS: Question[] = [
   },
   {
     id: 'area',
-    prompt: 'Roughly how much area does the work touch?',
+    prompt: 'Roughly how much area does the work touch? Pick a range, or type an exact number (e.g. "1,800 sq ft").',
+    when: (a) => a.beds !== 'tiny',
     choices: [
       { label: 'Under 150 sq ft', value: 's', hint: 'Powder room, small kitchen' },
       { label: '150–400 sq ft', value: 'm', hint: 'Standard kitchen / bath' },
@@ -400,6 +402,30 @@ const AREA_LABEL: Record<string, string> = {
 }
 const BUDGET_MULT: Record<string, number> = { value: 0.75, mid: 1, premium: 1.55 }
 
+/** Extracts an exact square footage from free-typed text, e.g. "1,800 sq ft"
+ *  or "about 2500sf" → 2500. Returns null when no usable number is found. */
+export function parseCustomAreaSqft(text: string): number | null {
+  const match = text.replace(/,/g, '').match(/(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const n = Math.round(parseFloat(match[1]))
+  return n > 0 && n < 20000 ? n : null
+}
+
+/** Resolves the working square footage: an exact typed number (stored as the
+ *  raw numeric string) takes priority over the bucketed s/m/l/xl presets. */
+export function areaSqft(a: Answers): number {
+  const n = Number(a.area)
+  if (Number.isFinite(n) && n > 0) return n
+  return AREA_SQFT[a.area] ?? 275
+}
+
+function areaLabel(a: Answers): string {
+  if (a.beds === 'tiny') return '~420 sq ft'
+  const n = Number(a.area)
+  if (Number.isFinite(n) && n > 0) return `${n.toLocaleString()} sq ft`
+  return AREA_LABEL[a.area] ?? ''
+}
+
 function pickDisciplines(a: Answers): DisciplineId[] {
   const set = new Set<DisciplineId>()
   const p = a.project
@@ -454,7 +480,7 @@ function buildDeliverables(a: Answers, disciplines: DisciplineId[]): Deliverable
 }
 
 function buildMaterials(a: Answers, disciplines: DisciplineId[]): MaterialLine[] {
-  const sqft = AREA_SQFT[a.area] ?? 275
+  const sqft = a.beds === 'tiny' ? 420 : areaSqft(a)
   const m: MaterialLine[] = []
   const has = (d: DisciplineId) => disciplines.includes(d)
 
@@ -505,7 +531,7 @@ function estimateCost(
   a: Answers,
   disciplines: DisciplineId[],
 ): { low: number; high: number; breakdown: CostLine[] } {
-  const sqft = AREA_SQFT[a.area] ?? 275
+  const sqft = a.beds === 'tiny' ? 420 : areaSqft(a)
   const mult = BUDGET_MULT[a.budget] ?? 1
   // Regional cost-of-living nudge.
   const regionMult: Record<string, number> = { CA: 1.25, NE: 1.15, FL: 1.0, TX: 0.95, US: 1.0 }
@@ -627,7 +653,7 @@ export function generatePackage(a: Answers): ProjectPackage {
 
   return {
     headline: `${projectLabel} — construction package`,
-    summary: `A ${AREA_LABEL[a.area] ?? ''} ${projectLabel.toLowerCase()} in ${regionName(a.region)}, ${a.structure === 'unknown' ? 'structure to be verified on-site' : `${a.structure} construction`}. Coordinated across ${disciplines.length} disciplines with a material list, cost band and schedule.`,
+    summary: `A ${areaLabel(a)} ${projectLabel.toLowerCase()} in ${regionName(a.region)}, ${a.structure === 'unknown' ? 'structure to be verified on-site' : `${a.structure} construction`}. Coordinated across ${disciplines.length} disciplines with a material list, cost band and schedule.`,
     disciplines,
     deliverables,
     materials,

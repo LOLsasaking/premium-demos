@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
+import FurnitureIcon from './FurnitureIcon'
 import Icon from './Icon'
 import Logo from './Logo'
 import SheetEditor from './SheetEditor'
@@ -127,11 +128,12 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
         <button onClick={() => addObject('light')} className="mt-1.5 flex w-full items-center justify-between rounded-lg border border-line bg-panel px-3 py-2 text-left text-xs text-mist hover:border-cyan"><span>Recessed light</span><span className="text-amber-300">E-2</span></button>
         <button onClick={() => addObject('outlet')} className="mt-1.5 flex w-full items-center justify-between rounded-lg border border-line bg-panel px-3 py-2 text-left text-xs text-mist hover:border-cyan"><span>Duplex receptacle</span><span className="text-cyan">E-1</span></button>
         <p className="mt-3 font-mono text-[8px] uppercase tracking-wider text-muted">Furniture &amp; fixtures</p>
-        <div className="mt-1.5 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+        <div className="mt-1.5 max-h-64 space-y-1.5 overflow-y-auto pr-1">
           {FURNITURE_CATALOG.map((item) => (
-            <button key={item.label} onClick={() => insertFurniture(item)} className="flex w-full items-center justify-between rounded-lg border border-line bg-panel px-3 py-2 text-left text-xs text-mist hover:border-cyan">
-              <span>{item.label}</span>
-              <span className="font-mono text-[9px] text-muted">{item.width.toFixed(1)}′×{item.depth.toFixed(1)}′</span>
+            <button key={item.label} onClick={() => insertFurniture(item)} className="flex w-full items-center gap-2.5 rounded-lg border border-line bg-panel px-2.5 py-2 text-left text-xs text-mist hover:border-cyan">
+              <FurnitureIcon kind={item.kind} />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="shrink-0 font-mono text-[9px] text-muted">{item.width.toFixed(1)}′×{item.depth.toFixed(1)}′</span>
             </button>
           ))}
         </div>

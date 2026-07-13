@@ -256,6 +256,11 @@ export default function SheetEditor({
           </label>
           {sel.layer === 'lighting' && sel.kind !== 'switch' && <label className="mt-2 flex items-center gap-2 rounded border border-line bg-ink/70 p-2 text-[10px] text-muted"><input type="checkbox" checked={sel.wetLocationRated ?? false} onChange={(e) => patch(sel.layer, sel.id, { wetLocationRated: e.target.checked })} className="accent-cyan" /> Wet-location-rated fixture</label>}
           {selectedLightCheck && <div className={`mt-2 rounded border p-2 text-[10px] leading-4 ${selectedLightCheck.status === 'block' ? 'border-red-400/40 bg-red-400/10 text-red-200' : 'border-amber-300/30 bg-amber-300/10 text-amber-100'}`}><p className="font-600">{selectedLightCheck.title}</p><p className="mt-1 opacity-80">{selectedLightCheck.reference}</p></div>}
+          {((edits[sel.layer]?.[sel.id]?.dx ?? 0) !== 0 || (edits[sel.layer]?.[sel.id]?.dy ?? 0) !== 0) && (
+            <button onClick={() => patch(sel.layer, sel.id, { dx: 0, dy: 0 })} className="mt-2 w-full rounded-lg border border-blueprint/40 bg-blueprint/10 py-1.5 text-blueprint hover:bg-blueprint/20">
+              Undo move — keep object
+            </button>
+          )}
           <button
             onClick={() => {
               patch(sel.layer, sel.id, { removed: true })

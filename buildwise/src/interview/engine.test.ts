@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   PROJECT_TYPES,
+  areaSqft,
   buildPanelSchedule,
   describeUploads,
   generatePackage,
   matchChoice,
   nextQuestion,
+  parseCustomAreaSqft,
   totalQuestions,
   type Answers,
 } from './engine'
@@ -234,12 +236,28 @@ describe('whole-house (ground-up) mode', () => {
   const sheets = generateSheetSet(HOUSE, pkg, 'blueprint')
 
   it('asks the whole-house program questions only for new builds', () => {
-    const a = runInterview({ project: 'newbuild' })
+    // Force the non-tiny-house branch (bedroom count) to exercise the full
+    // size-program question chain, since "Tiny house" is choices[0].
+    const a = runInterview({ project: 'newbuild', beds: '4' })
     expect(a.beds).toBeDefined()
     expect(a.baths).toBeDefined()
     expect(a.stories).toBeDefined()
     expect(a.garage).toBeDefined()
+    expect(a.area).toBeDefined()
     expect(runInterview({ project: 'kitchen' }).beds).toBeUndefined()
+  })
+
+  it('the tiny-house preset skips the remaining size questions', () => {
+    const a = runInterview({ project: 'newbuild', beds: 'tiny' })
+    expect(a.baths).toBeUndefined()
+    expect(a.stories).toBeUndefined()
+    expect(a.garage).toBeUndefined()
+    expect(a.area).toBeUndefined()
+    const model = buildModel(a, generatePackage(a))
+    expect(model.wFt * model.hFt).toBeLessThan(500)
+    expect(model.rooms?.some((r) => r.type === 'bed')).toBe(true)
+    expect(model.rooms?.some((r) => r.type === 'bath')).toBe(true)
+    expect(model.rooms?.some((r) => r.type === 'garage')).toBe(false)
   })
 
   it('lays out the full room program on the sheets', () => {
@@ -378,5 +396,32 @@ describe('furniture catalog', () => {
     const replaced = after.find((f) => f.id === 'add-king')!
     expect(replaced.width).toBeCloseTo(king.width)
     expect(replaced.x + replaced.width / 2).toBeCloseTo(center.x, 0)
+  })
+})
+
+describe('custom square footage', () => {
+  it('parses an exact number out of free-typed text', () => {
+    expect(parseCustomAreaSqft('1,800 sq ft')).toBe(1800)
+    expect(parseCustomAreaSqft('about 2500sf')).toBe(2500)
+    expect(parseCustomAreaSqft('900')).toBe(900)
+  })
+
+  it('rejects text with no usable number, zero, or unreasonable values', () => {
+    expect(parseCustomAreaSqft('a whole home')).toBeNull()
+    expect(parseCustomAreaSqft('0 sq ft')).toBeNull()
+    expect(parseCustomAreaSqft('999999')).toBeNull()
+  })
+
+  it('prefers an exact typed number over the bucketed presets', () => {
+    expect(areaSqft({ area: '1800' })).toBe(1800)
+    expect(areaSqft({ area: 'xl' })).toBe(1400)
+    expect(areaSqft({ area: undefined as unknown as string })).toBe(275)
+  })
+
+  it('drives the generated plan size for a kitchen remodel', () => {
+    const answers: Answers = { ...BASE, project: 'kitchen', area: '600' }
+    const model = buildModel(answers, generatePackage(answers))
+    expect(Math.round(model.wFt * model.hFt)).toBeGreaterThanOrEqual(500)
+    expect(Math.round(model.wFt * model.hFt)).toBeLessThanOrEqual(720)
   })
 })

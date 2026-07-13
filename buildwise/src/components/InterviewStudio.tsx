@@ -13,6 +13,7 @@ import {
   answeredCount,
   describeUploads,
   matchChoice,
+  parseCustomAreaSqft,
   totalQuestions,
 } from '../interview/engine'
 
@@ -183,6 +184,13 @@ export default function InterviewStudio() {
   function submitTyped(e: React.FormEvent) {
     e.preventDefault()
     if (!question || !draft.trim()) return
+    if (question.id === 'area') {
+      const sqft = parseCustomAreaSqft(draft)
+      if (sqft) {
+        commit(question, String(sqft), `${sqft.toLocaleString()} sq ft`)
+        return
+      }
+    }
     const c = matchChoice(question, draft)
     if (c) {
       commit(question, c.value, draft.trim())
@@ -367,7 +375,7 @@ export default function InterviewStudio() {
                       <input
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        placeholder="…or type your answer"
+                        placeholder={question.id === 'area' ? '…or type an exact size, e.g. 1,800 sq ft' : '…or type your answer'}
                         className="flex-1 rounded-xl border border-line bg-panel px-4 py-2.5 text-sm outline-none transition focus:border-blueprint"
                       />
                       <button

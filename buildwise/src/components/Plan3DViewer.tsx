@@ -3,7 +3,8 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
 import { buildModel, deviceMisplaced, furnitureMisplaced, layoutLighting, layoutPower, patchDeviceEdit, patchFurnitureEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
-import { buildDetailedModel, createModelMaterials, framingMembers, layoutFurniture } from '../lib/modelKit'
+import { buildDetailedModel, createModelMaterials, framingMembers, layoutFurniture, planRoomModels, type ModelKind } from '../lib/modelKit'
+import { fitToFootprint, loadFurnitureAsset } from '../lib/furnitureAssets'
 import { cutawayGeometry, loadTechnicalAsset, plumbingBranchPoints, plumbingServiceSource, technicalAssetForDevice, viewerCameraSpan, type TechnicalAssetId } from '../lib/technicalAssets'
 
 /**
@@ -164,6 +165,21 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
       // The lightweight fallback remains usable if a model cannot be fetched.
     })
   }
+  // Drop-in furniture: swaps the procedural placeholder for a real GLB the
+  // moment one appears at the conventioned path — no code change needed.
+  const mountFurniture = (anchor: THREE.Object3D, kind: ModelKind, width: number, depth: number, fallback: THREE.Object3D) => {
+    loadFurnitureAsset(kind, width, depth).then((asset) => {
+      if (!acceptAsyncAssets || !asset) return
+      fitToFootprint(asset, width, depth)
+      asset.name = `${kind}-dropin`
+      asset.traverse((part) => {
+        const mesh = part as THREE.Mesh
+        if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true }
+      })
+      anchor.add(asset)
+      fallback.visible = false
+    })
+  }
 
   // Concrete site, exposed foundation/service level, floor + grid. The front
   // foundation is intentionally opened so the technical systems remain visible.
@@ -279,6 +295,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
       anchor.add(invalidOutline(placement.width + 0.3, 2.7, placement.depth + 0.3, 1.35))
     }
     furniture.add(anchor)
+    mountFurniture(anchor, placement.kind, placement.width, placement.depth, object)
   }
   root.add(furniture)
 
@@ -597,21 +614,25 @@ export default function Plan3DViewer({
     }
     const onPointerUp = (event: PointerEvent) => {
       if (!drag || drag.pointerId !== event.pointerId) return
-      // Deltas accumulate: the object's base position already includes prior
-      // edits, so the stored offset is previous offset + this drag.
-      const ud = drag.object.userData
-      const prevEdits = editsRef.current ?? {}
-      const prevDelta =
-        ud.layer === 'furniture'
-          ? prevEdits.furniture?.[ud.id]
-          : prevEdits[ud.layer as 'power' | 'lighting']?.[ud.id]
-      const dx = snapPlanOffset((prevDelta?.dx ?? 0) + drag.dx)
-      const dy = snapPlanOffset((prevDelta?.dy ?? 0) + drag.dy)
-      onChangeRef.current?.(
-        ud.layer === 'furniture'
-          ? patchFurnitureEdit(prevEdits, ud.id, { dx, dy })
-          : patchDeviceEdit(prevEdits, ud.layer, ud.id, { dx, dy }),
-      )
+      // A plain click (no movement) is a pure selection — don't write a
+      // no-op edit for it. Only an actual drag commits a position change.
+      if (drag.dx !== 0 || drag.dy !== 0) {
+        // Deltas accumulate: the object's base position already includes
+        // prior edits, so the stored offset is previous offset + this drag.
+        const ud = drag.object.userData
+        const prevEdits = editsRef.current ?? {}
+        const prevDelta =
+          ud.layer === 'furniture'
+            ? prevEdits.furniture?.[ud.id]
+            : prevEdits[ud.layer as 'power' | 'lighting']?.[ud.id]
+        const dx = snapPlanOffset((prevDelta?.dx ?? 0) + drag.dx)
+        const dy = snapPlanOffset((prevDelta?.dy ?? 0) + drag.dy)
+        onChangeRef.current?.(
+          ud.layer === 'furniture'
+            ? patchFurnitureEdit(prevEdits, ud.id, { dx, dy })
+            : patchDeviceEdit(prevEdits, ud.layer, ud.id, { dx, dy }),
+        )
+      }
       drag = null
       controls.enabled = true
     }
@@ -720,6 +741,19 @@ export default function Plan3DViewer({
     const current = edits?.[selected.layer]?.[selected.id]
     updateSelected({ dx: snapPlanOffset((current?.dx ?? 0) + dx), dy: snapPlanOffset((current?.dy ?? 0) + dy) })
   }
+  const deviceMoved = selected && selected.layer !== 'furniture' && ((edits?.[selected.layer]?.[selected.id]?.dx ?? 0) !== 0 || (edits?.[selected.layer]?.[selected.id]?.dy ?? 0) !== 0)
+  const furnitureMoved = selected?.layer === 'furniture' && ((edits?.furniture?.[selected.id]?.dx ?? 0) !== 0 || (edits?.furniture?.[selected.id]?.dy ?? 0) !== 0)
+  const resetDevicePosition = () => {
+    if (!selected || selected.layer === 'furniture') return
+    onChange?.(patchDeviceEdit(edits ?? {}, selected.layer, selected.id, { dx: 0, dy: 0 }))
+  }
+  const resetFurniturePosition = () => {
+    if (!selected || selected.layer !== 'furniture') return
+    const baseFurniture = planRoomModels(model)
+    const addition = edits?.furnitureAdditions?.find((item) => item.id === selected.id)
+    const baseRotation = baseFurniture.find((item) => item.id === selected.id)?.rotation ?? addition?.rotation ?? 0
+    onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { dx: 0, dy: 0, rotation: baseRotation }))
+  }
 
   return (
     <div className={`relative ${className}`}>
@@ -762,7 +796,8 @@ export default function Plan3DViewer({
             <span /><button onClick={() => nudge(0, 0.25)} className="rounded border border-line py-1.5 text-cyan">↓</button><span />
           </div>
           <label className="mt-3 block text-muted">Circuit<input value={selectedDevice.circuit ?? ''} onChange={(e) => updateSelected({ circuit: e.target.value })} className="mt-1 w-full rounded border border-line bg-ink px-2 py-1.5 text-white outline-none focus:border-cyan" /></label>
-          <button onClick={() => { updateSelected({ removed: true }); setSelected(null) }} className="mt-3 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
+          {deviceMoved && <button onClick={resetDevicePosition} className="mt-3 w-full rounded border border-cyan/40 bg-cyan/10 py-2 text-cyan hover:bg-cyan/20">Undo move — keep object</button>}
+          <button onClick={() => { updateSelected({ removed: true }); setSelected(null) }} className="mt-2 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
         </div>
       )}
       {selected && selectedFurniture && (
@@ -777,7 +812,8 @@ export default function Plan3DViewer({
             <span /><button onClick={() => nudge(0, 0.25)} className="rounded border border-line py-1.5 text-cyan">↓</button><span />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1"><button onClick={() => onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { rotation: (selectedFurniture.rotation ?? 0) - Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan">↺ 15°</button><button onClick={() => onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { rotation: (selectedFurniture.rotation ?? 0) + Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan">15° ↻</button></div>
-          <button onClick={() => { onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { removed: true })); setSelected(null) }} className="mt-3 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
+          {furnitureMoved && <button onClick={resetFurniturePosition} className="mt-3 w-full rounded border border-cyan/40 bg-cyan/10 py-2 text-cyan hover:bg-cyan/20">Undo move — keep object</button>}
+          <button onClick={() => { onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { removed: true })); setSelected(null) }} className="mt-2 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
         </div>
       )}
     </div>

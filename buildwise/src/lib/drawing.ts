@@ -24,7 +24,7 @@
  * Output is an SVG string so the app and the export share one renderer.
  */
 
-import { AREA_SQFT, type Answers, type ProjectPackage } from '../interview/engine'
+import { areaSqft, type Answers, type ProjectPackage } from '../interview/engine'
 
 export type SheetTheme = 'blueprint' | 'autocad' | 'paper'
 
@@ -140,7 +140,7 @@ export interface PlanModel {
 
 export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
   if (a.project === 'newbuild') return buildHouseModel(a, pkg)
-  const sqft = AREA_SQFT[a.area] ?? 275
+  const sqft = areaSqft(a)
   // Aspect from analyzed upload when present, else ~4:3.
   const aspect = clamp(parseFloat(a._aspect ?? '') || 4 / 3, 0.8, 2.0)
   let wFt = Math.max(10, Math.round(Math.sqrt(sqft * aspect)))
@@ -198,21 +198,27 @@ export function buildModel(a: Answers, pkg: ProjectPackage): PlanModel {
  * living/kitchen across the bottom, garage on the west.
  */
 function buildHouseModel(a: Answers, pkg: ProjectPackage): PlanModel {
-  const beds = clamp(parseInt(a.beds ?? '3', 10) || 3, 2, 5)
-  const bathsTotal = parseFloat(a.baths ?? '2') || 2
-  const stories = parseInt(a.stories ?? '1', 10) || 1
-  const cars = clamp(parseInt(a.garage ?? '2', 10) || 0, 0, 3)
+  // Tiny house: a fixed compact preset (1 bed, 1 bath, single story, no
+  // garage, ~420 sq ft) — skips the size questions entirely.
+  const tiny = a.beds === 'tiny'
+  const beds = tiny ? 1 : clamp(parseInt(a.beds ?? '3', 10) || 3, 2, 5)
+  const bathsTotal = tiny ? 1 : parseFloat(a.baths ?? '2') || 2
+  const stories = tiny ? 1 : parseInt(a.stories ?? '1', 10) || 1
+  const cars = tiny ? 0 : clamp(parseInt(a.garage ?? '2', 10) || 0, 0, 3)
 
   // Floor 1 program (two-story homes push most bedrooms upstairs).
   const beds1 = stories === 2 ? Math.max(1, beds - 2) : beds
   const baths1 = stories === 2 ? Math.max(1, Math.ceil(bathsTotal) - 1) : Math.ceil(bathsTotal)
   const powder = stories === 1 && bathsTotal % 1 !== 0
 
-  const sqft = Math.max(AREA_SQFT[a.area] ?? 1400, 520 + beds1 * 200 + baths1 * 90 + (cars ? 60 : 0))
+  const sqft = tiny ? 420 : Math.max(areaSqft(a), 520 + beds1 * 200 + baths1 * 90 + (cars ? 60 : 0))
   const aspect = clamp(parseFloat(a._aspect ?? '') || 1.55, 1.2, 2.0)
   const garW = cars ? Math.min(12 + (cars - 1) * 8, Math.sqrt(sqft * aspect) * 0.34) : 0
   const W = Math.round(Math.sqrt(sqft * aspect) + garW * 0.6)
-  const H = Math.max(24, Math.round(sqft / (W - garW * 0.4)))
+  // The whole-house layout needs a minimum depth to fit a bed/bath row, a
+  // hall and a living/kitchen row; the tiny-house preset relaxes that floor
+  // so it reads as meaningfully smaller than a standard single-story build.
+  const H = Math.max(tiny ? 17 : 24, Math.round(sqft / (W - garW * 0.4)))
 
   const hallH = 3.5
   const topH = Math.round((H - hallH) * 0.52)
