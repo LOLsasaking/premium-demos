@@ -1,12 +1,12 @@
 /**
- * BuildWise AI — API server.
+ * Cadvora — API server.
  *
  * A thin, keyless-safe proxy in front of Claude. The browser never sees the
  * Anthropic key; it only talks to these endpoints. Start with:
  *
  *   cd server && npm install && ANTHROPIC_API_KEY=sk-... npm run dev
  *
- * Then point the frontend at it via VITE_BUILDWISE_API_URL (see ../.env.example).
+ * Then point the frontend at it via VITE_CADVORA_API_URL (see ../.env.example).
  */
 
 import fs from 'node:fs'
@@ -20,7 +20,7 @@ app.use(express.json({ limit: '25mb' })) // room for base64 images
 
 const hasKey = Boolean(process.env.ANTHROPIC_API_KEY)
 
-app.get('/health', (_req, res) => res.json({ ok: true, model: process.env.BUILDWISE_MODEL || 'claude-opus-4-8', keyConfigured: hasKey }))
+app.get('/health', (_req, res) => res.json({ ok: true, model: process.env.CADVORA_MODEL || process.env.BUILDWISE_MODEL || 'claude-opus-4-8', keyConfigured: hasKey }))
 
 function guard(res) {
   if (!hasKey) {
@@ -83,5 +83,5 @@ app.post('/api/waitlist', (req, res) => {
 
 const port = process.env.PORT || 8787
 app.listen(port, () => {
-  console.log(`BuildWise API on :${port} — key ${hasKey ? 'configured' : 'MISSING (set ANTHROPIC_API_KEY)'}`)
+  console.log(`Cadvora API on :${port} — key ${hasKey ? 'configured' : 'MISSING (set ANTHROPIC_API_KEY)'}`)
 })

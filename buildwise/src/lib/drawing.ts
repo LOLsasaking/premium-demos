@@ -1486,7 +1486,7 @@ function drawTitleBlock(c: Ctx, pkg: ProjectPackage, kind: SheetKind, theme: She
     `<line x1="${W * 0.72}" y1="${ty}" x2="${W * 0.72}" y2="${ty + 52}" stroke="${p.title}" stroke-width="1"/>`,
     `<line x1="${W * 0.87}" y1="${ty}" x2="${W * 0.87}" y2="${ty + 52}" stroke="${p.title}" stroke-width="1"/>`,
     `<text x="34" y="${ty + 21}" fill="${p.text}" font-size="12" font-family="monospace" font-weight="bold">${esc(pkg.headline.toUpperCase().slice(0, 46))}</text>`,
-    `<text x="34" y="${ty + 40}" fill="${p.dim}" font-size="10" font-family="monospace">BUILDWISE AI · ${theme === 'autocad' ? 'MODEL SPACE PREVIEW' : 'DRAFT PLAN SET'}</text>`,
+    `<text x="34" y="${ty + 40}" fill="${p.dim}" font-size="10" font-family="monospace">CADVORA · ${theme === 'autocad' ? 'MODEL SPACE PREVIEW' : 'DRAFT PLAN SET'}</text>`,
     `<text x="${W * 0.5 + 12}" y="${ty + 21}" fill="${p.text}" font-size="11" font-family="monospace">${sheetName}</text>`,
     `<text x="${W * 0.5 + 12}" y="${ty + 40}" fill="${p.dim}" font-size="9.5" font-family="monospace">SCALE: 1/4" = 1'-0" (NOM.)</text>`,
     `<text x="${W * 0.72 + 12}" y="${ty + 21}" fill="${p.light}" font-size="10" font-family="monospace">DRAFT</text>`,

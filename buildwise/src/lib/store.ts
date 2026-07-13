@@ -8,6 +8,7 @@
 
 import type { Answers, ProjectPackage } from '../interview/engine'
 import type { PlanEdits } from './drawing'
+import { BRAND, preferredStoredValue } from './brand'
 
 export interface SavedProject {
   id: string
@@ -20,11 +21,12 @@ export interface SavedProject {
   edits?: PlanEdits
 }
 
-const KEY = 'buildwise.projects.v1'
+const KEY = BRAND.projectStorageKey
+const LEGACY_KEY = 'buildwise.projects.v1'
 
 function read(): SavedProject[] {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = preferredStoredValue(localStorage.getItem(KEY), localStorage.getItem(LEGACY_KEY))
     return raw ? (JSON.parse(raw) as SavedProject[]) : []
   } catch {
     return []

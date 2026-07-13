@@ -238,7 +238,7 @@ export default function InterviewStudio() {
               <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
               <span className="h-3 w-3 rounded-full bg-[#FEBC2E]" />
               <span className="h-3 w-3 rounded-full bg-[#28C840]" />
-              <span className="ml-3 font-mono text-xs text-muted">buildwise · project studio</span>
+              <span className="ml-3 font-mono text-xs text-muted">cadvora · project studio</span>
               {started && (
                 <button
                   onClick={reset}

@@ -3,11 +3,13 @@
  *
  * Priority order:
  *   1. VITE_WAITLIST_URL — any JSON form endpoint (Formspree, Buttondown, your own).
- *   2. VITE_BUILDWISE_API_URL — the bundled server's /api/waitlist route
+ *   2. VITE_CADVORA_API_URL — the bundled server's /api/waitlist route
  *      (appends to a JSONL file on the server).
  *   3. Demo fallback — stored in localStorage so nothing is silently lost,
  *      flagged as 'local' so the UI can be honest about it.
  */
+
+import { BRAND, preferredStoredValue } from './brand'
 
 export interface WaitlistResult {
   ok: boolean
@@ -17,8 +19,8 @@ export interface WaitlistResult {
 export async function submitWaitlist(email: string): Promise<WaitlistResult> {
   const endpoint =
     import.meta.env.VITE_WAITLIST_URL ||
-    (import.meta.env.VITE_BUILDWISE_API_URL
-      ? `${import.meta.env.VITE_BUILDWISE_API_URL}/api/waitlist`
+    ((import.meta.env.VITE_CADVORA_API_URL || import.meta.env.VITE_BUILDWISE_API_URL)
+      ? `${import.meta.env.VITE_CADVORA_API_URL || import.meta.env.VITE_BUILDWISE_API_URL}/api/waitlist`
       : null)
 
   if (endpoint) {
@@ -31,9 +33,10 @@ export async function submitWaitlist(email: string): Promise<WaitlistResult> {
     return { ok: true, stored: 'remote' }
   }
 
-  const key = 'buildwise.waitlist.v1'
+  const key = BRAND.waitlistStorageKey
   try {
-    const list = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown[]
+    const raw = preferredStoredValue(localStorage.getItem(key), localStorage.getItem('buildwise.waitlist.v1'))
+    const list = JSON.parse(raw ?? '[]') as unknown[]
     list.push({ email, ts: Date.now() })
     localStorage.setItem(key, JSON.stringify(list))
   } catch {

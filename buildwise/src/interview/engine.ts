@@ -1,5 +1,5 @@
 /**
- * BuildWise AI — interview engine + construction-package generator.
+ * Cadvora — interview engine + construction-package generator.
  *
  * This module is the self-contained "brain" of the MVP. It runs a branching
  * contractor-style interview and turns the answers into a structured
@@ -146,7 +146,7 @@ export const PROJECT_TYPES = {
 const QUESTIONS: Question[] = [
   {
     id: 'project',
-    prompt: "Hi — I'm your BuildWise project lead. Let's scope this out. What are you working on?",
+    prompt: "Hi — I'm your Cadvora project lead. Let's scope this out. What are you working on?",
     choices: [
       { label: PROJECT_TYPES.kitchen, value: 'kitchen', hint: 'Cabinets, appliances, layout' },
       { label: PROJECT_TYPES.bathroom, value: 'bathroom', hint: 'Fixtures, wet walls, ventilation' },
@@ -637,8 +637,8 @@ export function generatePackage(a: Answers): ProjectPackage {
     timelineWeeks,
     schedule,
     permitNote: needsReview
-      ? 'Structural and long-term solar elements require review and stamping by a licensed engineer in your jurisdiction before permitting. BuildWise can route this to a vetted local pro.'
-      : 'Drawings are permit-ready pending standard local plan review. BuildWise can connect you with a licensed pro to stamp where your jurisdiction requires it.',
+      ? 'Structural and long-term solar elements require review and stamping by a licensed engineer in your jurisdiction before permitting. Cadvora can route this to a vetted local pro.'
+      : 'Drawings are coordinated planning drafts. A qualified professional must review them against local requirements before construction or permitting.',
     highlights,
   }
 }
