@@ -683,6 +683,58 @@ export function layoutLighting(m: PlanModel, edits?: PlanEdits): LightDevice[] {
   return applyEdits([...devices, ...(edits?.additions?.lighting ?? [])], edits?.lighting)
 }
 
+/* ------------------------------------------------------------------ */
+/* Placement validity — objects moved somewhere illegal stay on the    */
+/* plan but draw with a red outline instead of vanishing.              */
+/* ------------------------------------------------------------------ */
+
+/** Fixtures that must sit against a wall (plumbing/appliances/casework). */
+const WALL_FIXTURE_KINDS = new Set([
+  'shower', 'tub', 'toilet', 'vanity', 'sink-base', 'range', 'refrigerator', 'base-cabinet', 'garage-storage',
+])
+
+/** The room containing (x,y); the whole footprint in single-room mode; null if outside. */
+function containingRect(m: PlanModel, x: number, y: number): { x: number; y: number; w: number; h: number } | null {
+  if (!m.rooms) {
+    if (x < -0.6 || y < -0.6 || x > m.wFt + 0.6 || y > m.hFt + 0.6) return null
+    return { x: 0, y: 0, w: m.wFt, h: m.hFt }
+  }
+  for (const r of m.rooms) {
+    if (x >= r.x - 0.1 && x <= r.x + r.w + 0.1 && y >= r.y - 0.1 && y <= r.y + r.h + 0.1) return { x: r.x, y: r.y, w: r.w, h: r.h }
+  }
+  return null
+}
+
+/** Distance from a point to the nearest edge of a rectangle. */
+function distToWalls(rect: { x: number; y: number; w: number; h: number }, x: number, y: number): number {
+  return Math.min(x - rect.x, rect.x + rect.w - x, y - rect.y, rect.y + rect.h - y)
+}
+
+/**
+ * A furniture/fixture is misplaced when it leaves the building, or when a
+ * wall-mounted fixture (shower, toilet, vanity…) floats out in open space.
+ * Free-standing pieces (bed, sofa, tables) are valid anywhere inside.
+ * Footprint x,y is the top-left corner.
+ */
+export function furnitureMisplaced(
+  m: PlanModel,
+  item: { kind: string; x: number; y: number; width: number; depth: number },
+): boolean {
+  const cx = item.x + item.width / 2
+  const cy = item.y + item.depth / 2
+  const rect = containingRect(m, cx, cy)
+  if (!rect) return true
+  if (WALL_FIXTURE_KINDS.has(item.kind)) {
+    return distToWalls(rect, cx, cy) - Math.min(item.width, item.depth) / 2 > 2.2
+  }
+  return false
+}
+
+/** A device is misplaced when it has been dragged off the building footprint. */
+export function deviceMisplaced(m: PlanModel, _kind: string, x: number, y: number): boolean {
+  return containingRect(m, x, y) === null
+}
+
 export function hasPlanDrawing(pkg: ProjectPackage): boolean {
   return pkg.disciplines.some(
     (d) => d === 'electrical' || d === 'plumbing' || d === 'hvac' || d === 'smart' || d === 'structural',
@@ -801,11 +853,35 @@ function renderSheet(
 }
 
 function drawConstruction(c: Ctx) {
-  const { p } = c
-  c.legend.push([`<path d="M2 16V4h16v12" fill="none" stroke="${p.wall}" stroke-width="2.2"/>`, 'wall / partition'])
+  const { p, m, s } = c
+
+  // North arrow in the left gutter.
+  const nx = c.x0 - 30
+  const ny = c.y0 + 26
+  c.parts.push(
+    `<circle cx="${nx}" cy="${ny}" r="13" fill="none" stroke="${p.dim}" stroke-width="1"/>`,
+    `<path d="M${nx} ${ny - 11} L${nx + 4} ${ny + 3} L${nx} ${ny} L${nx - 4} ${ny + 3} Z" fill="${p.wall}" stroke="${p.wall}" stroke-width="0.6"/>`,
+    `<text x="${nx}" y="${ny + 22}" fill="${p.text}" font-size="9" font-family="monospace" text-anchor="middle">N</text>`,
+  )
+
+  // Room areas (whole-house) or overall area (single room) as SF callouts.
+  if (m.rooms) {
+    for (const r of m.rooms) {
+      if (r.type === 'hall') continue
+      const ctr = ft(c, r.x + r.w / 2, r.y + r.h / 2)
+      const sf = Math.round(r.w * r.h)
+      c.parts.push(`<text x="${ctr.x}" y="${ctr.y + (r.type === 'kitchen' || r.type === 'living' ? -r.h * s * 0.28 + 13 : 13)}" fill="${p.dim}" font-size="8" font-family="monospace" text-anchor="middle">${sf} SF</text>`)
+    }
+  } else {
+    const ctr = ft(c, m.wFt / 2, m.hFt / 2)
+    c.parts.push(`<text x="${ctr.x + (m.isKitchen ? 30 : 0)}" y="${ctr.y + 60}" fill="${p.dim}" font-size="9" font-family="monospace" text-anchor="middle">${Math.round(m.wFt * m.hFt)} SF · CLG 8'-1" U.N.O.</text>`)
+  }
+
+  c.legend.push([`<path d="M2 16V4h16v12" fill="none" stroke="${p.wall}" stroke-width="2.2"/>`, '2x6 ext / 2x4 int wall'])
   c.legend.push([`<path d="M3 17V5h12M3 17A12 12 0 0 1 15 5" fill="none" stroke="${p.dim}" stroke-width="1.2"/>`, 'door and swing'])
-  c.legend.push([`<line x1="2" y1="7" x2="18" y2="7" stroke="${p.wall}"/><line x1="2" y1="11" x2="18" y2="11" stroke="${p.wall}"/><line x1="2" y1="15" x2="18" y2="15" stroke="${p.wall}"/>`, 'window'])
+  c.legend.push([`<line x1="2" y1="7" x2="18" y2="7" stroke="${p.wall}"/><line x1="2" y1="11" x2="18" y2="11" stroke="${p.wall}"/><line x1="2" y1="15" x2="18" y2="15" stroke="${p.wall}"/>`, 'window (egress U.N.O.)'])
   c.legend.push([`<line x1="2" y1="10" x2="18" y2="10" stroke="${p.dim}"/><path d="M2 5v10M18 5v10" stroke="${p.dim}"/>`, 'dimension'])
+  c.legend.push([`<text x="9" y="14" fill="${p.text}" font-size="10" font-family="monospace" text-anchor="middle">SF</text>`, 'room area (net)'])
 }
 
 /* ---------- room shell, counters, door, window, dims -------------- */
@@ -1065,6 +1141,13 @@ function drawPower(c: Ctx, edits?: PlanEdits) {
   if (gfci.length > 1) c.parts.push(curveChain(gfci.map(px), p.circuit, '7 4 2 4')) // dash-dot
   if (plain.length > 1) c.parts.push(curveChain(plain.map(px), p.circuit, '7 4 2 4'))
 
+  // Home runs to the panel — one per branch group, with the circuit number.
+  // GFCI (kitchen/bath) circuits and general-purpose circuits go to LP.
+  if (gfci.length) homerun(c, px(gfci[0]), 250, `LP-2 20A`)
+  if (plain.length) homerun(c, px(plain[0]), 250, `LP-4 20A`)
+  const dedicated = devices.filter((d) => d.kind === 'dedicated')
+  dedicated.forEach((d, i) => homerun(c, px(d), 70, `LP-${8 + i}`))
+
   // Symbols.
   for (const d of devices) {
     const pt = px(d)
@@ -1073,10 +1156,17 @@ function drawPower(c: Ctx, edits?: PlanEdits) {
     if (d.circuit) c.parts.push(txt(pt.x + 9, pt.y + 14, `CKT ${d.circuit}`, p))
   }
 
+  // Mounting-height + panel note in an open area of the plan.
+  const hn = ft(c, m.wFt * 0.04, m.rooms ? -0.6 : m.hFt * 0.5)
+  c.parts.push(
+    `<text x="${hn.x}" y="${hn.y}" fill="${p.text}" font-size="10" font-family="Arial, sans-serif">Recept 15"–18" AFF · counter 4" above splash · panel LP 200A M/B</text>`,
+  )
+
   c.legend.push([recepGlyph(p, true), 'GFCI receptacle'])
   c.legend.push([recepGlyph(p, false), 'duplex receptacle'])
   c.legend.push([`<circle cx="9" cy="9" r="5.5" fill="none" stroke="${p.device}" stroke-width="1.4"/><text x="20" y="12" fill="${p.device}" font-size="9" font-family="monospace">240V</text>`, 'dedicated circuit'])
-  c.legend.push([`<path d="M2 12 Q9 2 16 12" fill="none" stroke="${p.circuit}" stroke-width="1.3" stroke-dasharray="6 3 2 3"/>`, 'circuit run'])
+  c.legend.push([`<path d="M2 12 Q9 2 16 12" fill="none" stroke="${p.circuit}" stroke-width="1.3" stroke-dasharray="6 3 2 3"/>`, 'circuit run (2#12+G)'])
+  c.legend.push([`<path d="M3 14 L15 5" stroke="${p.circuit}" stroke-width="1.3"/><path d="M15 5 l-5 0 M15 5 l0 5" stroke="${p.circuit}" stroke-width="1.3" fill="none"/>`, 'home run to panel'])
 }
 
 function receptacle(c: Ctx, pt: Pt, isGfci: boolean) {
@@ -1104,6 +1194,19 @@ function drawLighting(c: Ctx, edits?: PlanEdits) {
   const { p, m } = c
   const devices = layoutLighting(m, edits)
 
+  // Luminaire schedule — reads like the type legend on a real E-2.
+  const pushLightingLegend = (hasPendant: boolean, hasUc: boolean) => {
+    c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><line x1="4.5" y1="5.5" x2="13.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/><line x1="13.5" y1="5.5" x2="4.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/><text x="9" y="12.5" fill="${p.light}" font-size="5.5" text-anchor="middle" font-family="monospace">R6</text>`, 'R6 — 6" LED recessed, IC-AT'])
+    if (hasPendant) c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><circle cx="9" cy="10" r="2.6" fill="${p.light}"/>`, 'P — pendant / island'])
+    if (hasUc) c.legend.push([`<circle cx="9" cy="10" r="3.6" fill="none" stroke="${p.light}" stroke-width="1.3"/><text x="16" y="13" fill="${p.light}" font-size="8" font-family="monospace">V</text>`, 'V — vanity / under-cab LED'])
+    c.legend.push([`<text x="4" y="14" fill="${p.text}" font-size="12" font-style="italic" font-family="Georgia, serif">S₃</text>`, 'S / S₃ / Sᴰ switch + 3-way'])
+    c.legend.push([`<path d="M2 13 Q9 3 16 13" fill="none" stroke="${p.leg}" stroke-width="1.2"/><line x1="6" y1="9.5" x2="9" y2="6" stroke="${p.leg}" stroke-width="1"/><line x1="8" y1="11" x2="11" y2="7.5" stroke="${p.leg}" stroke-width="1"/>`, 'switch leg (# = conductors)'])
+    c.legend.push([`<path d="M3 14 L15 5" stroke="${p.circuit}" stroke-width="1.3"/><path d="M15 5 l-5 0 M15 5 l0 5" stroke="${p.circuit}" stroke-width="1.3" fill="none"/>`, 'home run to panel LP'])
+  }
+
+  // Small fixture-type tag drawn beside a can.
+  const canTag = (pt: Pt) => c.parts.push(`<text x="${(pt.x + 10).toFixed(1)}" y="${(pt.y - 7).toFixed(1)}" fill="${p.light}" font-size="7" font-family="monospace">R6</text>`)
+
   if (m.rooms) {
     // House mode: every room gets a switch; each fixture legs to its
     // nearest switch instead of one long chain across rooms.
@@ -1119,23 +1222,24 @@ function drawLighting(c: Ctx, edits?: PlanEdits) {
           best = sw
         }
       }
-      if (best) c.parts.push(curve(ft(c, best.x, best.y), ft(c, f.x, f.y), p.leg, ''))
+      if (best) c.parts.push(wireLeg(ft(c, best.x, best.y), ft(c, f.x, f.y), p.leg, best.label === 'S3' ? 3 : 2))
     }
     for (const d of fixtures) {
       const pt = ft(c, d.x, d.y)
-      if (d.kind === 'can') canSymbol(c, pt)
+      if (d.kind === 'can') { canSymbol(c, pt); canTag(pt) }
       else if (d.kind === 'pendant') pendantSymbol(c, pt)
       else ucSymbol(c, pt)
     }
-    for (const sw of sws) switchSymbol(c, ft(c, sw.x, sw.y), sw.label ?? 'S')
+    // Each switch home-runs to the lighting panel; circuits cycle L1..
+    sws.forEach((sw, i) => {
+      switchSymbol(c, ft(c, sw.x, sw.y), sw.label ?? 'S')
+      if (i % 2 === 0) homerun(c, ft(c, sw.x, sw.y), sw.y < (m.hFt / 2) ? 250 : 110, `LP-${(i % 6) + 1}`)
+    })
     const note = ft(c, m.wFt * 0.02, -0.8)
     c.parts.push(
-      `<text x="${note.x}" y="${note.y - 14}" fill="${p.text}" font-size="10.5" font-family="Arial, sans-serif">Note: all lighting on dimmer switches · bath fans 50 CFM min vented to exterior</text>`,
+      `<text x="${note.x}" y="${note.y - 14}" fill="${p.text}" font-size="10.5" font-family="Arial, sans-serif">Note: all lighting on dimmers U.N.O. · switch legs tagged with conductor count · bath fans 50 CFM min to exterior</text>`,
     )
-    c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><line x1="4.5" y1="5.5" x2="13.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/><line x1="13.5" y1="5.5" x2="4.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/>`, 'recessed can'])
-    c.legend.push([`<circle cx="9" cy="10" r="3.6" fill="none" stroke="${p.light}" stroke-width="1.3"/>`, 'vanity / utility light'])
-    c.legend.push([`<text x="4" y="14" fill="${p.text}" font-size="12" font-style="italic" font-family="Georgia, serif">S</text>`, 'switch (S3 = 3-way)'])
-    c.legend.push([`<path d="M2 12 Q9 2 16 12" fill="none" stroke="${p.leg}" stroke-width="1.2"/>`, 'switch leg'])
+    pushLightingLegend(false, true)
     return
   }
   const cans = devices.filter((d) => d.kind === 'can').map((d) => ft(c, d.x, d.y))
@@ -1145,35 +1249,31 @@ function drawLighting(c: Ctx, edits?: PlanEdits) {
   const sw1 = sws[0] ? ft(c, sws[0].x, sws[0].y) : ft(c, m.wFt - 0.45, m.hFt * 0.7)
   const sw2 = sws[1] ? ft(c, sws[1].x, sws[1].y) : ft(c, 0.8, m.hFt - 0.8)
 
-  // Switch legs (curved, solid-thin) drawn under fixtures.
-  if (cans.length) {
-    c.parts.push(curveChain([{ x: sw1.x - 8, y: sw1.y }, ...cans], p.leg, ''))
-    c.parts.push(curve(sw2, cans[Math.floor(cans.length / 2)], p.leg, ''))
-  }
-  if (pendants.length) c.parts.push(curveChain([{ x: sw1.x - 8, y: sw1.y + 6 }, ...pendants], p.leg, '4 3'))
-  if (ucs.length) c.parts.push(curveChain([sw2, ...ucs], p.leg, '4 3'))
+  // Switch legs: each fixture legs to its nearer switch, hash-marked with the
+  // conductor count (3-way runs carry 3), so the wiring intent is explicit.
+  const nearer = (pt: Pt) => ((pt.x - sw1.x) ** 2 + (pt.y - sw1.y) ** 2 <= (pt.x - sw2.x) ** 2 + (pt.y - sw2.y) ** 2 ? sw1 : sw2)
+  for (const pt of cans) c.parts.push(wireLeg(nearer(pt), pt, p.leg, 3))
+  for (const pt of pendants) c.parts.push(wireLeg(sw1, pt, p.leg, 2))
+  for (const pt of ucs) c.parts.push(wireLeg(sw2, pt, p.leg, 2))
 
-  // Fixtures.
-  for (const pt of cans) canSymbol(c, pt)
+  // Fixtures + type tags.
+  for (const pt of cans) { canSymbol(c, pt); canTag(pt) }
   for (const pt of pendants) pendantSymbol(c, pt)
   for (const pt of ucs) ucSymbol(c, pt)
 
-  // Switch glyphs.
+  // Switch glyphs + a home run from the primary switch bank to the panel.
   if (sws[0]) switchSymbol(c, sw1, sws[0].label ?? 'S3')
   if (sws[1]) switchSymbol(c, sw2, sws[1].label ?? 'S')
+  homerun(c, sw1, m.door.wall === 'E' ? 20 : 160, 'LP-1,3')
 
-  // Dimmer note — straight from the reference sheet.
+  // Dimmer note.
   const note = ft(c, m.wFt * 0.08, m.hFt * 0.52)
   c.parts.push(
-    `<text x="${note.x}" y="${note.y}" fill="${p.text}" font-size="11" font-family="Arial, sans-serif">Note: all lighting</text>`,
-    `<text x="${note.x}" y="${note.y + 14}" fill="${p.text}" font-size="11" font-family="Arial, sans-serif">on dimmer switches</text>`,
+    `<text x="${note.x}" y="${note.y}" fill="${p.text}" font-size="11" font-family="Arial, sans-serif">Note: all lighting on</text>`,
+    `<text x="${note.x}" y="${note.y + 14}" fill="${p.text}" font-size="11" font-family="Arial, sans-serif">dimmer switches · legs tagged w/ wires</text>`,
   )
 
-  c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><line x1="4.5" y1="5.5" x2="13.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/><line x1="13.5" y1="5.5" x2="4.5" y2="14.5" stroke="${p.light}" stroke-width="1.2"/>`, 'recessed can'])
-  if (pendants.length) c.legend.push([`<circle cx="9" cy="10" r="6.5" fill="${p.lightFill}" stroke="${p.light}" stroke-width="1.4"/><circle cx="9" cy="10" r="2.6" fill="${p.light}"/>`, 'pendant'])
-  if (ucs.length) c.legend.push([`<circle cx="9" cy="10" r="3.6" fill="none" stroke="${p.light}" stroke-width="1.3"/><text x="16" y="13" fill="${p.light}" font-size="8" font-family="monospace">UC</text>`, 'under-cabinet light'])
-  c.legend.push([`<text x="4" y="14" fill="${p.text}" font-size="12" font-style="italic" font-family="Georgia, serif">S3</text>`, '3-way switch (dimmer)'])
-  c.legend.push([`<path d="M2 12 Q9 2 16 12" fill="none" stroke="${p.leg}" stroke-width="1.2"/>`, 'switch leg'])
+  pushLightingLegend(pendants.length > 0, ucs.length > 0)
 }
 
 function canSymbol(c: Ctx, pt: Pt) {
@@ -1578,6 +1678,51 @@ function curveChain(pts: Pt[], stroke: string, dash: string): string {
   let out = ''
   for (let i = 0; i < pts.length - 1; i++) out += curve(pts[i], pts[i + 1], stroke, dash)
   return out
+}
+
+/** Curved switch leg with conductor hash marks near the switch (a) end. */
+function wireLeg(a: Pt, b: Pt, stroke: string, ticks: number): string {
+  const path = curve(a, b, stroke, '')
+  if (ticks <= 0) return path
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  const px = -uy
+  const py = ux
+  let marks = ''
+  for (let i = 0; i < ticks; i++) {
+    const t = 15 + i * 5
+    const mx = a.x + ux * t
+    const my = a.y + uy * t
+    marks += `<line x1="${(mx - px * 4).toFixed(1)}" y1="${(my - py * 4).toFixed(1)}" x2="${(mx + px * 4).toFixed(1)}" y2="${(my + py * 4).toFixed(1)}" stroke="${stroke}" stroke-width="1"/>`
+  }
+  return path + marks
+}
+
+/** Home-run arrow to the panel: a slashed arrow leaving the device + circuit tag. */
+function homerun(c: Ctx, from: Pt, angleDeg: number, label: string): void {
+  const { p } = c
+  const a = (angleDeg * Math.PI) / 180
+  const len = 30
+  const ex = from.x + Math.cos(a) * len
+  const ey = from.y + Math.sin(a) * len
+  const ah = 7
+  const left = a + Math.PI * 0.83
+  const right = a - Math.PI * 0.83
+  // Two slashes across the run = 2 conductors + ground (home-run convention).
+  const sx = from.x + Math.cos(a) * 12
+  const sy = from.y + Math.sin(a) * 12
+  const nx = -Math.sin(a)
+  const ny = Math.cos(a)
+  c.parts.push(
+    `<path d="M${from.x.toFixed(1)} ${from.y.toFixed(1)} L${ex.toFixed(1)} ${ey.toFixed(1)}" stroke="${p.circuit}" stroke-width="1.3" fill="none"/>`,
+    `<path d="M${ex.toFixed(1)} ${ey.toFixed(1)} L${(ex + Math.cos(left) * ah).toFixed(1)} ${(ey + Math.sin(left) * ah).toFixed(1)} M${ex.toFixed(1)} ${ey.toFixed(1)} L${(ex + Math.cos(right) * ah).toFixed(1)} ${(ey + Math.sin(right) * ah).toFixed(1)}" stroke="${p.circuit}" stroke-width="1.3" fill="none"/>`,
+    `<line x1="${(sx - nx * 4).toFixed(1)}" y1="${(sy - ny * 4).toFixed(1)}" x2="${(sx + nx * 4).toFixed(1)}" y2="${(sy + ny * 4).toFixed(1)}" stroke="${p.circuit}" stroke-width="1"/>`,
+    `<line x1="${(sx - nx * 4 + Math.cos(a) * 4).toFixed(1)}" y1="${(sy - ny * 4 + Math.sin(a) * 4).toFixed(1)}" x2="${(sx + nx * 4 + Math.cos(a) * 4).toFixed(1)}" y2="${(sy + ny * 4 + Math.sin(a) * 4).toFixed(1)}" stroke="${p.circuit}" stroke-width="1"/>`,
+    txt(ex + Math.cos(a) * 3 - 4, ey + Math.sin(a) * 3 - 5, label, p),
+  )
 }
 
 function txt(x: number, y: number, t: string, p: Palette, anchor = 'start'): string {

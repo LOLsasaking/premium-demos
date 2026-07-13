@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
-import { buildModel, deviceEditOrigin, layoutLighting, layoutPower, patchDeviceEdit, patchFurnitureEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
+import { buildModel, deviceMisplaced, furnitureMisplaced, layoutLighting, layoutPower, patchDeviceEdit, patchFurnitureEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
 import { buildDetailedModel, createModelMaterials, framingMembers, layoutFurniture } from '../lib/modelKit'
 import { cutawayGeometry, loadTechnicalAsset, plumbingBranchPoints, plumbingServiceSource, technicalAssetForDevice, viewerCameraSpan, type TechnicalAssetId } from '../lib/technicalAssets'
 
@@ -89,6 +89,19 @@ function wallWithGaps(
     cursor = end
   }
   wallBox(parent, mat, x1 + ux * cursor, z1 + uz * cursor, x2, z2, WALL_H, t)
+}
+
+const INVALID_COLOR = 0xff4d4f
+
+/** Red wireframe box flagging an object that has been moved somewhere illegal. */
+function invalidOutline(w: number, h: number, d: number, y: number): THREE.LineSegments {
+  const seg = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)),
+    new THREE.LineBasicMaterial({ color: INVALID_COLOR }),
+  )
+  seg.position.set(0, y, 0)
+  seg.name = 'invalid-outline'
+  return seg
 }
 
 function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean): Built {
@@ -245,7 +258,6 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   const modelMaterials = createModelMaterials()
   const furniture = new THREE.Group()
   furniture.name = 'Detailed house models'
-  const baseFurniture = layoutFurniture(m)
   for (const placement of layoutFurniture(m, edits)) {
     const anchor = new THREE.Group()
     const object = buildDetailedModel(placement.kind, modelMaterials, placement.width, placement.depth)
@@ -260,8 +272,12 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(placement.width, 2.5, placement.depth), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.02, depthWrite: false }))
     hitTarget.position.set(0, 1.25, 0)
     anchor.add(object, hitTarget)
-    const base = baseFurniture.find((item) => item.id === placement.id) ?? placement
-    tagFurniture(anchor, hitTarget, placement.id, placement.kind, base.x, base.y, placement.width / 2, placement.depth / 2)
+    // Base = the object's CURRENT edited center; drag deltas accumulate onto
+    // the existing edit, so repeated drags stay exact and objects never jump.
+    tagFurniture(anchor, hitTarget, placement.id, placement.kind, placement.x + placement.width / 2, placement.y + placement.depth / 2, 0, 0)
+    if (furnitureMisplaced(m, { kind: placement.kind, x: placement.x, y: placement.y, width: placement.width, depth: placement.depth })) {
+      anchor.add(invalidOutline(placement.width + 0.3, 2.7, placement.depth + 0.3, 1.35))
+    }
     furniture.add(anchor)
   }
   root.add(furniture)
@@ -277,7 +293,6 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
 
   /* ---- LIGHTS layer ------------------------------------------------ */
   const lightDevs = layoutLighting(m, edits)
-  const baseLights = layoutLighting(m)
   const grpLights = new THREE.Group()
   const fixtureMats: THREE.MeshStandardMaterial[] = []
   const pointLights: THREE.PointLight[] = []
@@ -297,8 +312,8 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }),
     )
     anchor.add(hitTarget)
-    const base = deviceEditOrigin(baseLights, d)
-    tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
+    tag(anchor, hitTarget, 'lighting', d.id, d.kind, d.x, d.y)
+    if (deviceMisplaced(m, d.kind, d.x, d.y)) anchor.add(invalidOutline(1.2, 1.2, 1.2, 0))
     mountAsset(
       anchor,
       technicalAssetForDevice('lighting', d.kind, smart),
@@ -322,8 +337,8 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     anchor.add(marker)
     const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.5), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
     anchor.add(hitTarget)
-    const base = deviceEditOrigin(baseLights, d)
-    tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
+    tag(anchor, hitTarget, 'lighting', d.id, d.kind, d.x, d.y)
+    if (deviceMisplaced(m, d.kind, d.x, d.y)) anchor.add(invalidOutline(1, 1.6, 0.7, 0))
     mountAsset(anchor, technicalAssetForDevice('lighting', d.kind, smart), marker, d.kind === 'switch' ? 0.48 : 0.38, [0, 0, 0])
     grpLights.add(anchor)
   })
@@ -331,7 +346,6 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
 
   /* ---- ELECTRICAL layer -------------------------------------------- */
   const powerDevs = layoutPower(m, edits)
-  const basePower = layoutPower(m)
   const grpElec = new THREE.Group()
   const outletMat = new THREE.MeshStandardMaterial({ color: C.wire, emissive: C.wire, emissiveIntensity: 0.5 })
   systemMats.push(outletMat)
@@ -342,8 +356,8 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     anchor.add(o)
     const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.7), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
     anchor.add(hitTarget)
-    const base = deviceEditOrigin(basePower, d)
-    tag(anchor, hitTarget, 'power', d.id, d.kind, base.x, base.y)
+    tag(anchor, hitTarget, 'power', d.id, d.kind, d.x, d.y)
+    if (deviceMisplaced(m, d.kind, d.x, d.y)) anchor.add(invalidOutline(1.1, 1.7, 0.9, 0.2))
     mountAsset(anchor, technicalAssetForDevice('power', d.kind, smart), o, d.kind === 'dedicated' ? 0.58 : 0.5, [0, 0, 0])
     grpElec.add(anchor)
   }
@@ -493,6 +507,11 @@ export default function Plan3DViewer({
     if (layersOverride) setLayers((prev) => ({ ...prev, ...layersOverride }))
   }, [layersOverride])
 
+  // Edit mode: off = orbit only, on = objects are selectable/draggable.
+  const [editMode, setEditMode] = useState(false)
+  const editModeRef = useRef(editMode)
+  editModeRef.current = editMode
+
   // Live values for the persistent pointer handlers (registered once).
   const editsRef = useRef(edits)
   editsRef.current = edits
@@ -554,6 +573,7 @@ export default function Plan3DViewer({
       raycaster.setFromCamera(pointer, camera)
     }
     const onPointerDown = (event: PointerEvent) => {
+      if (!editModeRef.current) return // orbit-only until Edit is enabled
       cast(event)
       const picked = raycaster.intersectObjects(builtRef.current?.selectables ?? [], false)[0]?.object
       if (!picked) return
@@ -717,13 +737,25 @@ export default function Plan3DViewer({
           </button>
         ))}
       </div>
-      <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-panel/80 px-2 py-1 text-[10px] text-muted">
-        drag empty space to orbit · select and drag furniture, fixtures, or devices
+      <div className="absolute left-3 top-3 flex items-center gap-2">
+        <button
+          onClick={() => setEditMode((on) => { if (on) setSelected(null); return !on })}
+          className={`pointer-events-auto flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-600 transition ${
+            editMode ? 'border-cyan bg-cyan text-ink shadow-glow' : 'border-line bg-panel/90 text-mist hover:border-cyan'
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${editMode ? 'bg-ink' : 'bg-cyan'}`} />
+          {editMode ? 'Editing — click an object' : 'Edit'}
+        </button>
+        <span className="pointer-events-none rounded-md bg-panel/80 px-2 py-1 text-[10px] text-muted">
+          {editMode ? 'drag objects to move · drag empty space to orbit' : 'drag to orbit · click Edit to move objects'}
+        </span>
       </div>
       {selected && selectedDevice && (
         <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-[#08111e]/95 p-3 text-xs shadow-glow backdrop-blur">
-          <div className="flex items-center justify-between"><span className="font-600 capitalize text-white">{selected.kind}</span><span className="font-mono text-[9px] uppercase text-cyan">Synced object</span></div>
+          <div className="flex items-center justify-between gap-2"><span className="font-600 capitalize text-white">{selected.kind}</span><div className="flex items-center gap-2"><span className="font-mono text-[9px] uppercase text-cyan">Synced</span><button onClick={() => setSelected(null)} aria-label="Close" className="grid h-5 w-5 place-items-center rounded border border-line text-muted hover:border-cyan hover:text-white">×</button></div></div>
           <p className="mt-1 font-mono text-[10px] text-muted">X {selectedDevice.x.toFixed(2)}′ · Y {selectedDevice.y.toFixed(2)}′</p>
+          {deviceMisplaced(model, selectedDevice.kind, selectedDevice.x, selectedDevice.y) && <p className="mt-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-[9px] text-red-300">Outside plan area — shown with a red outline.</p>}
           <div className="mt-3 grid grid-cols-3 gap-1">
             <span /><button onClick={() => nudge(0, -0.25)} className="rounded border border-line py-1.5 text-cyan">↑</button><span />
             <button onClick={() => nudge(-0.25, 0)} className="rounded border border-line py-1.5 text-cyan">←</button><span className="grid place-items-center font-mono text-[8px] text-muted">3″</span><button onClick={() => nudge(0.25, 0)} className="rounded border border-line py-1.5 text-cyan">→</button>
@@ -735,9 +767,10 @@ export default function Plan3DViewer({
       )}
       {selected && selectedFurniture && (
         <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-[#08111e]/95 p-3 text-xs shadow-glow backdrop-blur">
-          <div className="flex items-center justify-between"><span className="font-600 capitalize text-white">{selectedFurniture.kind.replace(/-/g, ' ')}</span><span className="font-mono text-[9px] uppercase text-cyan">Linked object</span></div>
+          <div className="flex items-center justify-between gap-2"><span className="font-600 capitalize text-white">{selectedFurniture.kind.replace(/-/g, ' ')}</span><div className="flex items-center gap-2"><span className="font-mono text-[9px] uppercase text-cyan">Linked</span><button onClick={() => setSelected(null)} aria-label="Close" className="grid h-5 w-5 place-items-center rounded border border-line text-muted hover:border-cyan hover:text-white">×</button></div></div>
           <p className="mt-1 font-mono text-[10px] text-muted">X {selectedFurniture.x.toFixed(2)}′ · Y {selectedFurniture.y.toFixed(2)}′</p>
           <p className="mt-1 font-mono text-[9px] text-muted">{selectedFurniture.width.toFixed(1)}′ × {selectedFurniture.depth.toFixed(1)}′ measured footprint</p>
+          {furnitureMisplaced(model, selectedFurniture) && <p className="mt-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-[9px] text-red-300">Not against a wall / off-plan — flagged with a red outline. Drag it back to clear.</p>}
           <div className="mt-3 grid grid-cols-3 gap-1">
             <span /><button onClick={() => nudge(0, -0.25)} className="rounded border border-line py-1.5 text-cyan">↑</button><span />
             <button onClick={() => nudge(-0.25, 0)} className="rounded border border-line py-1.5 text-cyan">←</button><span className="grid place-items-center font-mono text-[8px] text-muted">3″</span><button onClick={() => nudge(0.25, 0)} className="rounded border border-line py-1.5 text-cyan">→</button>

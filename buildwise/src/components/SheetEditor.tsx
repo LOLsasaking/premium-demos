@@ -5,6 +5,8 @@ import {
   SHEET_SIZE,
   addPlanDevice,
   buildModel,
+  deviceMisplaced,
+  furnitureMisplaced,
   generateSheetSet,
   generateShellSVG,
   layoutLighting,
@@ -70,14 +72,18 @@ export default function SheetEditor({
   const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
   const tf = useMemo(() => sheetTransform(model), [model])
   const editableLayers = useMemo(() => sheetEditableLayers(sheetKind), [sheetKind])
+  // Each editable sheet carries a single layer; its visibility toggle decides
+  // whether the fully-drawn plan (fixtures + wiring/legend) or the bare
+  // architectural shell is shown underneath the draggable hit-targets.
+  const layerOn = editableLayers.includes('power') ? showPower : editableLayers.includes('lighting') ? showLighting : true
   const shell = useMemo(
     () => {
-      const svg = editableLayers.length > 0
+      const svg = editableLayers.length > 0 && !layerOn
         ? generateShellSVG(answers, pkg, theme)
         : generateSheetSet(answers, pkg, theme, edits).find((sheet) => sheet.id === sheetKind)?.svg ?? generateShellSVG(answers, pkg, theme)
       return svg.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')
     },
-    [answers, pkg, theme, edits, sheetKind, editableLayers.length],
+    [answers, pkg, theme, edits, sheetKind, editableLayers.length, layerOn],
   )
 
   const devices: AnyDevice[] = useMemo(
@@ -144,7 +150,6 @@ export default function SheetEditor({
   }
 
   const px = (d: AnyDevice) => ({ x: tf.x0 + d.x * tf.s, y: tf.y0 + d.y * tf.s })
-  const dark = theme !== 'paper'
   const powerColor = theme === 'autocad' ? '#00FFFF' : '#8FC1FF'
   const lightColor = theme === 'autocad' ? '#FFFF00' : '#F59E0B'
   const selectedLightCheck = sel?.layer === 'lighting' && sel.kind !== 'switch'
@@ -173,7 +178,7 @@ export default function SheetEditor({
 
         <g aria-label="Furniture and equipment plan" fill="none" stroke={theme === 'autocad' ? '#91A9C3' : '#64748B'} strokeWidth="1.1">
           {furniture.map((item) => (
-            <PlanFurniture key={item.id} item={item} x0={tf.x0} y0={tf.y0} scale={tf.s} selected={selected === `furniture:${item.id}`} onPointerDown={(event) => onFurnitureDown(event, item)} onSelect={() => setSelected(`furniture:${item.id}`)} />
+            <PlanFurniture key={item.id} item={item} x0={tf.x0} y0={tf.y0} scale={tf.s} selected={selected === `furniture:${item.id}`} misplaced={furnitureMisplaced(model, item)} onPointerDown={(event) => onFurnitureDown(event, item)} onSelect={() => setSelected(`furniture:${item.id}`)} />
           ))}
         </g>
 
@@ -188,6 +193,7 @@ export default function SheetEditor({
           if (d.layer === 'lighting' && !showLighting) return null
           const { x, y } = px(d)
           const isSel = selected === d.layer + ':' + d.id
+          const bad = deviceMisplaced(model, d.kind, d.x, d.y)
           const color = d.layer === 'power' ? powerColor : lightColor
           return (
             <g
@@ -196,47 +202,13 @@ export default function SheetEditor({
               onPointerDown={(e) => onDeviceDown(e, d)}
               style={{ cursor: 'grab' }}
             >
-              {isSel && <circle r="16" fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="4 3" />}
-              <circle r="12" fill="transparent" />
-              {d.kind === 'switch' ? (
-                <text fill={color} fontSize="15" fontStyle="italic" fontFamily="Georgia, serif" textAnchor="middle" dy="5">
-                  S
-                </text>
-              ) : d.kind === 'can' ? (
-                <>
-                  <circle r="8" fill="none" stroke={color} strokeWidth="1.5" />
-                  <line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5" stroke={color} strokeWidth="1.2" />
-                  <line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5" stroke={color} strokeWidth="1.2" />
-                </>
-              ) : d.kind === 'pendant' ? (
-                <>
-                  <circle r="8" fill="none" stroke={color} strokeWidth="1.5" />
-                  <circle r="3" fill={color} />
-                </>
-              ) : d.kind === 'uc' ? (
-                <circle r="4.5" fill="none" stroke={color} strokeWidth="1.4" />
-              ) : (
-                <>
-                  <circle r="5.5" fill={dark ? '#0B1220' : '#fff'} stroke={color} strokeWidth="1.6" />
-                  <line x1="-9" y1="0" x2="-5.5" y2="0" stroke={color} strokeWidth="1.6" />
-                  <line x1="5.5" y1="0" x2="9" y2="0" stroke={color} strokeWidth="1.6" />
-                  {d.kind === 'gfci' && (
-                    <text fill={color} fontSize="9" fontFamily="monospace" textAnchor="middle" y="-9">
-                      GFCI
-                    </text>
-                  )}
-                </>
-              )}
-              {'label' in d && d.label && d.kind === 'dedicated' && (
-                <text fill={color} fontSize="9" fontFamily="monospace" x="9" y="-7">
-                  {d.label}
-                </text>
-              )}
-              {d.circuit && (
-                <text fill={color} fontSize="9" fontFamily="monospace" x="9" y="14">
-                  CKT {d.circuit}
-                </text>
-              )}
+              {/* The fixture/receptacle symbol, wiring and tags are drawn by the
+                  full plan backdrop; this layer is the transparent drag target
+                  plus selection / invalid feedback. */}
+              {bad && <circle r="15" fill="none" stroke="#FF4D4F" strokeWidth="2" strokeDasharray="4 3" />}
+              {isSel && <circle r="15" fill="none" stroke={bad ? '#FF4D4F' : color} strokeWidth="1.5" strokeDasharray="4 3" />}
+              <circle r="13" fill="transparent" />
+              {isSel && <circle r="2" fill={bad ? '#FF4D4F' : color} />}
             </g>
           )
         })}
@@ -268,10 +240,11 @@ export default function SheetEditor({
       {/* Inspector */}
       {sel && (
         <div className="absolute right-3 top-3 w-52 rounded-xl border border-line bg-panel/95 p-3 text-xs shadow-soft backdrop-blur">
-          <div className="font-600 text-mist">{KIND_LABEL[sel.kind] ?? sel.kind}</div>
+          <div className="flex items-center justify-between gap-2"><span className="font-600 text-mist">{KIND_LABEL[sel.kind] ?? sel.kind}</span><button onClick={() => setSelected(null)} aria-label="Close" className="grid h-5 w-5 place-items-center rounded border border-line text-muted hover:border-cyan hover:text-white">×</button></div>
           <div className="mt-1 font-mono text-muted">
             {sel.x.toFixed(2)}′ , {sel.y.toFixed(2)}′ · drag to move
           </div>
+          {deviceMisplaced(model, sel.kind, sel.x, sel.y) && <div className="mt-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-[10px] text-red-300">Off the plan — shown with a red outline.</div>}
           <label className="mt-2 block text-muted">
             Circuit #
             <input
@@ -298,9 +271,10 @@ export default function SheetEditor({
 
       {selectedFurniture && (
         <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-panel/95 p-3 text-xs shadow-soft backdrop-blur">
-          <div className="flex items-center justify-between"><span className="font-600 capitalize text-mist">{selectedFurniture.kind.replace(/-/g, ' ')}</span><span className="font-mono text-[8px] uppercase text-cyan">2D + 3D linked</span></div>
+          <div className="flex items-center justify-between gap-2"><span className="font-600 capitalize text-mist">{selectedFurniture.kind.replace(/-/g, ' ')}</span><div className="flex items-center gap-2"><span className="font-mono text-[8px] uppercase text-cyan">2D + 3D</span><button onClick={() => setSelected(null)} aria-label="Close" className="grid h-5 w-5 place-items-center rounded border border-line text-muted hover:border-cyan hover:text-white">×</button></div></div>
           <p className="mt-1 font-mono text-[10px] text-muted">X {selectedFurniture.x.toFixed(2)}′ · Y {selectedFurniture.y.toFixed(2)}′</p>
           <p className="mt-1 font-mono text-[9px] text-muted">{selectedFurniture.width.toFixed(1)}′ × {selectedFurniture.depth.toFixed(1)}′ footprint</p>
+          {furnitureMisplaced(model, selectedFurniture) && <p className="mt-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-[10px] text-red-300">Not against a wall / off-plan — flagged red. Drag it back to clear.</p>}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button onClick={() => onChange(patchFurnitureEdit(edits, selectedFurniture.id, { rotation: (selectedFurniture.rotation ?? 0) - Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan hover:border-cyan">↺ Rotate 15°</button>
             <button onClick={() => onChange(patchFurnitureEdit(edits, selectedFurniture.id, { rotation: (selectedFurniture.rotation ?? 0) + Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan hover:border-cyan">Rotate 15° ↻</button>
@@ -353,7 +327,7 @@ export default function SheetEditor({
   )
 }
 
-function PlanFurniture({ item, x0, y0, scale, selected, onPointerDown, onSelect }: { item: ModelPlacement; x0: number; y0: number; scale: number; selected: boolean; onPointerDown: (event: React.PointerEvent<SVGGElement>) => void; onSelect: () => void }) {
+function PlanFurniture({ item, x0, y0, scale, selected, misplaced, onPointerDown, onSelect }: { item: ModelPlacement; x0: number; y0: number; scale: number; selected: boolean; misplaced: boolean; onPointerDown: (event: React.PointerEvent<SVGGElement>) => void; onSelect: () => void }) {
   const x = x0 + item.x * scale
   const y = y0 + item.y * scale
   const w = item.width * scale
@@ -361,10 +335,12 @@ function PlanFurniture({ item, x0, y0, scale, selected, onPointerDown, onSelect 
   const rotation = ((item.rotation ?? 0) * 180) / Math.PI
   const transform = `translate(${x} ${y}) rotate(${rotation} ${w / 2} ${h / 2})`
   const rounded = item.kind === 'sofa' || item.kind === 'bed' || item.kind === 'tub'
+  const outline = misplaced ? '#FF4D4F' : selected ? '#22D3EE' : undefined
   return (
-    <g transform={transform} opacity="0.9" onPointerDown={onPointerDown} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} role="button" tabIndex={0} aria-label={`Edit ${item.kind.replace(/-/g, ' ')}`} style={{ cursor: 'grab' }} stroke={selected ? '#22D3EE' : undefined} strokeWidth={selected ? 2 : undefined}>
+    <g transform={transform} opacity="0.9" onPointerDown={onPointerDown} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} role="button" tabIndex={0} aria-label={`Edit ${item.kind.replace(/-/g, ' ')}${misplaced ? ' (invalid placement)' : ''}`} style={{ cursor: 'grab' }} stroke={outline} strokeWidth={outline ? 2 : undefined}>
       <rect width={w} height={h} fill="transparent" stroke="transparent" strokeWidth="12" />
-      {selected && <rect x="-5" y="-5" width={w + 10} height={h + 10} rx="4" stroke="#22D3EE" strokeDasharray="5 3" />}
+      {misplaced && <rect x="-5" y="-5" width={w + 10} height={h + 10} rx="4" fill="none" stroke="#FF4D4F" strokeWidth="2" strokeDasharray="6 3" />}
+      {selected && !misplaced && <rect x="-5" y="-5" width={w + 10} height={h + 10} rx="4" stroke="#22D3EE" strokeDasharray="5 3" />}
       <rect width={w} height={h} rx={rounded ? Math.min(5, w * 0.08) : 1.5} strokeDasharray={item.kind.includes('cabinet') ? '3 2' : undefined} />
       {item.kind === 'bed' && <><line x1="0" y1={h * 0.27} x2={w} y2={h * 0.27} /><rect x={w * 0.08} y={h * 0.06} width={w * 0.36} height={h * 0.14} rx="2" /><rect x={w * 0.56} y={h * 0.06} width={w * 0.36} height={h * 0.14} rx="2" /></>}
       {item.kind === 'sofa' && <><rect x={w * 0.05} y={h * 0.1} width={w * 0.9} height={h * 0.65} rx="3" /><line x1={w / 3} y1={h * 0.1} x2={w / 3} y2={h * 0.75} /><line x1={w * 2 / 3} y1={h * 0.1} x2={w * 2 / 3} y2={h * 0.75} /></>}
