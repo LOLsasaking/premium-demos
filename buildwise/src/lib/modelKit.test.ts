@@ -29,6 +29,15 @@ describe('detailed house model planning', () => {
     expect(kinds).toContain('garage-storage')
   })
 
+  it('builds a complete bathroom with vanity, toilet, and shower models', () => {
+    const answers: Answers = { ...base, project: 'bathroom', area: 'm' }
+    const models = planRoomModels(buildModel(answers, generatePackage(answers)))
+    const kinds = models.map((model) => model.kind)
+    expect(kinds).toContain('vanity')
+    expect(kinds).toContain('toilet')
+    expect(kinds).toContain('shower')
+  })
+
   it('keeps every placement inside the generated footprint', () => {
     const answers: Answers = { ...base, project: 'newbuild', area: 'l', beds: '2', baths: '2', stories: '1', garage: '1' }
     const model = buildModel(answers, generatePackage(answers))

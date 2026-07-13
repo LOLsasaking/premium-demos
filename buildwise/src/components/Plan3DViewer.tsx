@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
-import { buildModel, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, type EditableLayer, type PlanEdits, type PlanModel } from '../lib/drawing'
+import { buildModel, deviceEditOrigin, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
 import { buildDetailedModel, createModelMaterials, planRoomModels } from '../lib/modelKit'
-import { cutawayGeometry, loadTechnicalAsset, plumbingServiceSource, technicalAssetForDevice, type TechnicalAssetId } from '../lib/technicalAssets'
+import { cutawayGeometry, loadTechnicalAsset, plumbingBranchPoints, plumbingServiceSource, technicalAssetForDevice, viewerCameraSpan, type TechnicalAssetId } from '../lib/technicalAssets'
 
 /**
  * 3D model of the generated project — the same PlanModel and device layouts
@@ -249,7 +249,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
 
   /* ---- LIGHTS layer ------------------------------------------------ */
   const lightDevs = layoutLighting(m, edits)
-  const baseLights = new Map(layoutLighting(m).map((d) => [d.id, d]))
+  const baseLights = layoutLighting(m)
   const grpLights = new THREE.Group()
   const fixtureMats: THREE.MeshStandardMaterial[] = []
   const pointLights: THREE.PointLight[] = []
@@ -269,7 +269,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }),
     )
     anchor.add(hitTarget)
-    const base = baseLights.get(d.id)!
+    const base = deviceEditOrigin(baseLights, d)
     tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
     mountAsset(
       anchor,
@@ -294,7 +294,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     anchor.add(marker)
     const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.5), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
     anchor.add(hitTarget)
-    const base = baseLights.get(d.id)!
+    const base = deviceEditOrigin(baseLights, d)
     tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
     mountAsset(anchor, technicalAssetForDevice('lighting', d.kind, smart), marker, d.kind === 'switch' ? 0.48 : 0.38, [0, 0, 0])
     grpLights.add(anchor)
@@ -303,7 +303,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
 
   /* ---- ELECTRICAL layer -------------------------------------------- */
   const powerDevs = layoutPower(m, edits)
-  const basePower = new Map(layoutPower(m).map((d) => [d.id, d]))
+  const basePower = layoutPower(m)
   const grpElec = new THREE.Group()
   const outletMat = new THREE.MeshStandardMaterial({ color: C.wire, emissive: C.wire, emissiveIntensity: 0.5 })
   for (const d of powerDevs) {
@@ -313,14 +313,14 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     anchor.add(o)
     const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.7), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
     anchor.add(hitTarget)
-    const base = basePower.get(d.id)!
+    const base = deviceEditOrigin(basePower, d)
     tag(anchor, hitTarget, 'power', d.id, d.kind, base.x, base.y)
     mountAsset(anchor, technicalAssetForDevice('power', d.kind, smart), o, d.kind === 'dedicated' ? 0.58 : 0.5, [0, 0, 0])
     grpElec.add(anchor)
   }
   const tube = (pts: THREE.Vector3[], color: number, radius: number) => {
     if (pts.length < 2) return null
-    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.08)
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal')
     return new THREE.Mesh(
       new THREE.TubeGeometry(curve, Math.max(24, pts.length * 10), radius, 7, false),
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7, roughness: 0.45 }),
@@ -351,15 +351,9 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     if (coldTrunk) grpPlumb.add(coldTrunk)
     if (hotTrunk) grpPlumb.add(hotTrunk)
     for (const ap of m.appliances) {
-      if (!['SINK', 'LAV', 'TUB', 'WC', 'DW'].includes(ap.label)) continue
+      if (!['SINK', 'LAV', 'TUB', 'SHWR', 'WC', 'DW'].includes(ap.label)) continue
       const t = tube(
-        [
-          new THREE.Vector3(service.x, 0.45, service.y),
-          new THREE.Vector3(service.x, serviceY, cutaway.serviceZ),
-          new THREE.Vector3(ap.x, serviceY, cutaway.serviceZ),
-          new THREE.Vector3(ap.x, serviceY, ap.y),
-          new THREE.Vector3(ap.x, 0.45, ap.y),
-        ],
+        plumbingBranchPoints(ap, serviceY, cutaway.serviceZ).map((point) => new THREE.Vector3(point.x, point.y, point.z)),
         ap.label === 'WC' || ap.label === 'TUB' ? C.wire : C.water,
         ap.label === 'WC' ? 0.13 : 0.09,
       )
@@ -420,12 +414,14 @@ export default function Plan3DViewer({
   pkg,
   edits,
   onChange,
+  focusSheet,
   className = '',
 }: {
   answers: Answers
   pkg: ProjectPackage
   edits?: PlanEdits
   onChange?: (edits: PlanEdits) => void
+  focusSheet?: SheetKind
   className?: string
 }) {
   const mountRef = useRef<HTMLDivElement>(null)
@@ -438,6 +434,10 @@ export default function Plan3DViewer({
     plumbing: false,
     framing: false,
   })
+
+  useEffect(() => {
+    if (focusSheet) setLayers(viewerLayerPreset(focusSheet))
+  }, [focusSheet])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -453,7 +453,7 @@ export default function Plan3DViewer({
     renderer.toneMappingExposure = 1.15
     mount.appendChild(renderer.domElement)
 
-    const span = Math.max(m.wFt, m.hFt)
+    const span = viewerCameraSpan(m.wFt, m.hFt)
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 400)
     camera.position.set(span * 0.72, span * 0.92, span * 0.98)
 

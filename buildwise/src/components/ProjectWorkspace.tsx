@@ -3,8 +3,9 @@ import Icon from './Icon'
 import Logo from './Logo'
 import SheetEditor from './SheetEditor'
 import { exportDXF, exportHTML, exportJSON } from '../lib/export'
-import { generateSheetSet, hasPlanDrawing, type PlanEdits, type SheetKind } from '../lib/drawing'
+import { buildModel, generateSheetSet, hasPlanDrawing, layoutLighting, layoutPower, type PlanEdits, type SheetKind } from '../lib/drawing'
 import { DISCIPLINES, formatUSD, type Answers, type ProjectPackage } from '../interview/engine'
+import { evaluatePlanChecks, type CodeCheck, type CodeProfile } from '../lib/codeChecks'
 
 const Plan3DViewer = lazy(() => import('./Plan3DViewer'))
 
@@ -30,9 +31,14 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
   const [sheetId, setSheetId] = useState<SheetKind>('power')
   const [edits, setEdits] = useState<PlanEdits>(initialEdits ?? {})
   const [exportOpen, setExportOpen] = useState(false)
+  const [sidePanel, setSidePanel] = useState<'explorer' | 'checks'>('explorer')
+  const [codeProfile, setCodeProfile] = useState<CodeProfile>({ jurisdiction: 'Model code baseline — verify local adoption', residentialCode: '2021 IRC', electricalCode: '2023 NEC' })
   const sheets = useMemo(() => hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, 'autocad', edits) : [], [answers, pkg, edits])
   const active = sheets.find((sheet) => sheet.id === sheetId) ?? sheets[0]
-  const editCount = Object.values(edits).reduce((count, layer) => count + Object.keys(layer ?? {}).length, 0)
+  const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
+  const codeChecks = useMemo(() => evaluatePlanChecks(model, layoutPower(model, edits), layoutLighting(model, edits), codeProfile), [model, edits, codeProfile])
+  const issueCount = codeChecks.filter((check) => check.status === 'block' || check.status === 'warn').length
+  const editCount = Object.keys(edits.power ?? {}).length + Object.keys(edits.lighting ?? {}).length + (edits.additions?.power?.length ?? 0) + (edits.additions?.lighting?.length ?? 0)
 
   function changeEdits(next: PlanEdits) {
     setEdits(next)
@@ -53,6 +59,7 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden items-center gap-2 rounded-md border border-cyan/20 bg-cyan/5 px-2.5 py-1.5 font-mono text-[9px] uppercase text-cyan md:flex"><span className="h-1.5 w-1.5 rounded-full bg-cyan shadow-[0_0_8px_#22d3ee]" /> Synced</span>
+          <button onClick={() => setSidePanel('checks')} className={`hidden rounded-md border px-3 py-2 text-xs xl:block ${issueCount ? 'border-amber-300/40 text-amber-200' : 'border-emerald-300/30 text-emerald-200'}`}>Code review · {issueCount}</button>
           <div className="relative"><button onClick={() => setExportOpen((open) => !open)} className="rounded-md border border-line px-3 py-2 text-xs text-white hover:border-cyan">Export</button>{exportOpen && <div className="absolute right-0 top-11 z-50 w-48 rounded-lg border border-line bg-panel p-1.5 shadow-2xl"><button onClick={() => exportHTML(answers, pkg, edits)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-panel2">Document / PDF</button><button onClick={() => exportDXF(answers, pkg, edits)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-panel2">DXF / AutoCAD</button><button onClick={() => exportJSON(answers, pkg)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-panel2">JSON / BIM handoff</button></div>}</div>
           <button onClick={onNew} className="hidden rounded-md bg-blueprint px-3 py-2 text-xs font-600 text-white sm:block">New project</button>
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-md border border-line text-muted hover:text-white" aria-label="Close workspace"><Icon path="M18 6 6 18M6 6l12 12" size={18} /></button>
@@ -69,14 +76,14 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           </div>
 
           <div className={`grid min-h-0 flex-1 bg-black ${view === 'split' ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-            {view !== '3d' && <section className={`relative min-h-[340px] overflow-auto border-line bg-black ${view === 'split' ? 'lg:border-r' : ''}`} aria-label="Editable 2D plan"><div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-black/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan">2D plan · editable · live</div><SheetEditor answers={answers} pkg={pkg} theme="autocad" edits={edits} onChange={changeEdits} /></section>}
-            {view !== '2d' && <section className="relative min-h-[340px] overflow-hidden" aria-label="Editable 3D model"><Suspense fallback={<div className="grid h-full min-h-[420px] place-items-center font-mono text-xs text-muted">Constructing detailed house model…</div>}><Plan3DViewer answers={answers} pkg={pkg} edits={edits} onChange={changeEdits} className="h-full min-h-[420px]" /></Suspense></section>}
+            {view !== '3d' && <section className={`relative min-h-[340px] overflow-auto border-line bg-black ${view === 'split' ? 'lg:border-r' : ''}`} aria-label="Editable 2D plan"><div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-black/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan">{active?.name ?? '2D plan'} · {active && ['power', 'lighting'].includes(active.id) ? 'editable · live' : 'coordinated trade sheet'}</div><SheetEditor answers={answers} pkg={pkg} theme="autocad" sheetKind={active?.id ?? 'construction'} codeProfile={codeProfile} edits={edits} onChange={changeEdits} /></section>}
+            {view !== '2d' && <section className="relative min-h-[340px] overflow-hidden" aria-label="Editable 3D model"><Suspense fallback={<div className="grid h-full min-h-[420px] place-items-center font-mono text-xs text-muted">Constructing detailed house model…</div>}><Plan3DViewer answers={answers} pkg={pkg} edits={edits} onChange={changeEdits} focusSheet={active?.id} className="h-full min-h-[420px]" /></Suspense></section>}
           </div>
         </main>
 
         <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-[#1d3048] bg-[#0b1624] xl:block">
-          <div className="flex items-center justify-between border-b border-[#1d3048] px-4 py-3"><p className="text-xs font-600 text-white">Explorer</p><Icon path="M4 6h16M4 12h16M4 18h16" size={15} className="text-muted" /></div>
-          <div className="p-4">
+          <div className="grid grid-cols-2 border-b border-[#1d3048] p-1.5"><button onClick={() => setSidePanel('explorer')} className={`rounded px-3 py-2 text-[10px] font-600 ${sidePanel === 'explorer' ? 'bg-cyan/10 text-cyan' : 'text-muted'}`}>Explorer</button><button onClick={() => setSidePanel('checks')} className={`rounded px-3 py-2 text-[10px] font-600 ${sidePanel === 'checks' ? 'bg-cyan/10 text-cyan' : 'text-muted'}`}>Code review {issueCount > 0 ? `(${issueCount})` : ''}</button></div>
+          {sidePanel === 'explorer' ? <div className="p-4">
           <label className="flex items-center gap-2 rounded-md border border-line bg-[#07111d] px-2.5 py-2 text-muted"><Icon path="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" size={13} /><input aria-label="Search project layers" placeholder="Search layers" className="min-w-0 flex-1 bg-transparent text-[11px] text-white outline-none placeholder:text-muted" /></label>
           <div className="mt-4 rounded-md border border-line bg-[#08111d] p-2">
             <p className="flex items-center gap-2 px-1 py-1.5 text-[11px] font-600 text-white"><span className="text-cyan">⌄</span> Cadvora project</p>
@@ -88,7 +95,7 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           <div className="mt-6 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">Project summary</p><dl className="mt-3 grid grid-cols-2 gap-2"><Summary label="Cost" value={`${formatUSD(pkg.costLow)}–${formatUSD(pkg.costHigh)}`} /><Summary label="Timeline" value={`${pkg.timelineWeeks[0]}–${pkg.timelineWeeks[1]} wks`} /><Summary label="Sheets" value={String(sheets.length)} /><Summary label="Edits" value={String(editCount)} /></dl></div>
           <div className="mt-5 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">View properties</p><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">Cutaway</span><input type="range" min="0" max="100" defaultValue="72" className="h-1 flex-1 accent-cyan" /></label><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">System glow</span><input type="range" min="0" max="100" defaultValue="65" className="h-1 flex-1 accent-blueprint" /></label></div>
           <div className="mt-6 rounded-lg border border-cyan/20 bg-cyan/5 p-3 text-[11px] leading-5 text-muted"><span className="font-600 text-cyan">Professional review required.</span> Cadvora accelerates planning and coordination; qualified professionals must review final construction documents.</div>
-          </div>
+          </div> : <CodeReviewPanel profile={codeProfile} onProfileChange={setCodeProfile} checks={codeChecks} />}
         </aside>
       </div>
 
@@ -99,4 +106,23 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
 
 function Summary({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border border-line bg-panel/60 p-2"><dt className="font-mono text-[8px] uppercase text-muted">{label}</dt><dd className="mt-1 text-[11px] font-600 text-white">{value}</dd></div>
+}
+
+function CodeReviewPanel({ profile, onProfileChange, checks }: { profile: CodeProfile; onProfileChange: (profile: CodeProfile) => void; checks: CodeCheck[] }) {
+  const tone: Record<CodeCheck['status'], string> = {
+    pass: 'border-emerald-400/30 bg-emerald-400/5 text-emerald-200',
+    warn: 'border-amber-300/35 bg-amber-300/5 text-amber-100',
+    block: 'border-red-400/40 bg-red-400/10 text-red-200',
+    review: 'border-blueprint/30 bg-blueprint/5 text-blue-100',
+  }
+  return <div className="p-4">
+    <p className="text-xs font-600 text-white">Advisory model-code screen</p>
+    <p className="mt-1 text-[10px] leading-4 text-muted">Choose the intended baseline. Cadvora flags measurable conflicts; it does not certify compliance or replace the authority having jurisdiction.</p>
+    <label className="mt-4 block font-mono text-[8px] uppercase tracking-wider text-muted">Jurisdiction<input value={profile.jurisdiction} onChange={(event) => onProfileChange({ ...profile, jurisdiction: event.target.value })} className="mt-1.5 w-full rounded border border-line bg-[#07111d] px-2.5 py-2 text-[10px] normal-case tracking-normal text-white outline-none focus:border-cyan" /></label>
+    <div className="mt-3 grid grid-cols-2 gap-2">
+      <label className="font-mono text-[8px] uppercase text-muted">Residential<select value={profile.residentialCode} onChange={(event) => onProfileChange({ ...profile, residentialCode: event.target.value as CodeProfile['residentialCode'] })} className="mt-1.5 w-full rounded border border-line bg-[#07111d] p-2 text-[10px] text-white"><option>2021 IRC</option><option>2024 IRC</option></select></label>
+      <label className="font-mono text-[8px] uppercase text-muted">Electrical<select value={profile.electricalCode} onChange={(event) => onProfileChange({ ...profile, electricalCode: event.target.value as CodeProfile['electricalCode'] })} className="mt-1.5 w-full rounded border border-line bg-[#07111d] p-2 text-[10px] text-white"><option>2020 NEC</option><option>2023 NEC</option></select></label>
+    </div>
+    <div className="mt-4 space-y-2">{checks.map((check) => <article key={check.id} className={`rounded-lg border p-3 ${tone[check.status]}`}><div className="flex items-start gap-2"><span className="mt-0.5 font-mono text-[8px] uppercase">{check.status}</span><p className="text-[11px] font-600 leading-4 text-white">{check.title}</p></div><p className="mt-1.5 text-[9px] leading-4 opacity-80">{check.detail}</p><a href={check.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block font-mono text-[8px] underline decoration-current/40 underline-offset-2">{check.reference} ↗</a></article>)}</div>
+  </div>
 }

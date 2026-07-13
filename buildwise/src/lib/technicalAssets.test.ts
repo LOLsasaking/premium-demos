@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { cutawayGeometry, plumbingServiceSource, technicalAssetForDevice, TECHNICAL_ASSET_PATHS } from './technicalAssets'
+import { cutawayGeometry, plumbingBranchPoints, plumbingServiceSource, technicalAssetForDevice, TECHNICAL_ASSET_PATHS, viewerCameraSpan } from './technicalAssets'
 
 const required = ['bulb-a19','bulb-smart','outlet-duplex','outlet-smart','plug-grounded','switch-rocker','switch-smart','junction-box','panel','pipe-straight','pipe-elbow','pipe-tee','pipe-ptrap','valve-shutoff','floor-drain','light-recessed','light-pendant'] as const
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/models/technical')
@@ -48,5 +48,15 @@ describe('technical GLB asset kit', () => {
 
   it('opens the viewer-facing wall and floor to expose the service level', () => {
     expect(cutawayGeometry(20, 16)).toEqual({ floorDepth: 11.84, sideReturn: 3.2, openingStart: 3.2, openingEnd: 16.8, serviceZ: 16.8 })
+  })
+
+  it('keeps small-room cameras readable and branches below the slab', () => {
+    expect(viewerCameraSpan(10, 8)).toBe(18)
+    expect(plumbingBranchPoints({ x: 2, y: 6 }, -1.8, 8.8)).toEqual([
+      { x: 2, y: -1.8, z: 8.8 },
+      { x: 2, y: -1.8, z: 6 },
+      { x: 2, y: -0.15, z: 6 },
+      { x: 2, y: 0.45, z: 6 },
+    ])
   })
 })

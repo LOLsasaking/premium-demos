@@ -58,6 +58,23 @@ export function cutawayGeometry(width: number, height: number) {
   }
 }
 
+export function viewerCameraSpan(width: number, height: number) {
+  return Math.max(width, height, 18)
+}
+
+export function plumbingBranchPoints(
+  fixture: { x: number; y: number },
+  serviceY: number,
+  serviceZ: number,
+) {
+  return [
+    { x: fixture.x, y: serviceY, z: serviceZ },
+    { x: fixture.x, y: serviceY, z: fixture.y },
+    { x: fixture.x, y: -0.15, z: fixture.y },
+    { x: fixture.x, y: 0.45, z: fixture.y },
+  ]
+}
+
 const loader = new GLTFLoader()
 const cache = new Map<TechnicalAssetId, Promise<THREE.Group>>()
 

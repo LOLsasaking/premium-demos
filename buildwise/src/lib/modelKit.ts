@@ -14,6 +14,7 @@ export type ModelKind =
   | 'vanity'
   | 'toilet'
   | 'tub'
+  | 'shower'
   | 'garage-storage'
 
 export interface ModelPlacement {
@@ -58,6 +59,14 @@ export function planRoomModels(model: PlanModel): ModelPlacement[] {
         { kind: 'refrigerator', x: model.wFt - 3.1, y: model.hFt - 2.8, width: 2.6, depth: 2.5 },
       )
       if (model.island) out.push({ kind: 'island', x: model.island.x, y: model.island.y, width: model.island.w, depth: model.island.h })
+    } else if (model.appliances.some((appliance) => appliance.label === 'SHWR')) {
+      const shower = model.appliances.find((appliance) => appliance.label === 'SHWR')!
+      const toilet = model.appliances.find((appliance) => appliance.label === 'WC')!
+      out.push(
+        { kind: 'shower', x: shower.x - (shower.w ?? 3) / 2, y: shower.y - (shower.h ?? 3) / 2, width: shower.w ?? 3, depth: shower.h ?? 3 },
+        { kind: 'toilet', x: toilet.x - 0.85, y: toilet.y - 1.1, width: 1.7, depth: 2.2 },
+        { kind: 'vanity', x: model.wFt - 2.2, y: 0.35, width: 1.85, depth: 3.1 },
+      )
     }
     return out.map((p) => ({ ...p, x: Math.max(0, Math.min(p.x, model.wFt - p.width)), y: Math.max(0, Math.min(p.y, model.hFt - p.depth)) }))
   }
@@ -80,7 +89,7 @@ export function planRoomModels(model: PlanModel): ModelPlacement[] {
     } else if (room.type === 'bath' || room.type === 'powder') {
       out.push(inside(room, 'vanity', room.x + room.w - 3.2, room.y + 0.45, 2.7, 1.6))
       out.push(inside(room, 'toilet', room.x + 0.55, room.y + room.h - 2.5, 1.7, 2.1))
-      if (room.type === 'bath' && room.w > 6) out.push(inside(room, 'tub', cx - 2.6, room.y + room.h - 2.7, 5.2, 2.2))
+      if (room.type === 'bath' && room.w > 6) out.push(inside(room, 'shower', cx - 1.5, room.y + room.h - 3.4, 3, 3))
     } else if (room.type === 'garage') {
       out.push(inside(room, 'garage-storage', room.x + 0.45, room.y + 0.45, Math.min(6, room.w - 1), 1.5))
     }
@@ -188,6 +197,21 @@ export function buildDetailedModel(kind: ModelKind, m: ModelMaterials, width = 4
     outer.position.set(width / 2, 0.8, depth / 2)
     g.add(outer)
     box(g, m.dark, width / 2, 1.65, depth / 2, width - 0.45, 0.08, depth - 0.45)
+  } else if (kind === 'shower') {
+    box(g, m.white, width / 2, 0.1, depth / 2, width, 0.2, depth)
+    box(g, m.dark, width / 2, 0.24, depth / 2, width - 0.2, 0.08, depth - 0.2)
+    box(g, m.glass, 0.04, 3.2, depth / 2, 0.08, 6.2, depth)
+    box(g, m.glass, width / 2, 3.2, 0.04, width, 6.2, 0.08)
+    const riser = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4.1, 10), m.metal)
+    riser.position.set(width * 0.18, 3.25, depth * 0.12)
+    g.add(riser)
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 18), m.metal)
+    head.rotation.z = Math.PI / 2
+    head.position.set(width * 0.38, 5.2, depth * 0.12)
+    g.add(head)
+    const drain = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.04, 18), m.metal)
+    drain.position.set(width / 2, 0.25, depth / 2)
+    g.add(drain)
   } else if (kind === 'garage-storage') {
     box(g, m.dark, width / 2, 3.2, depth / 2, width, 6.4, depth)
     for (let y = 1.2; y < 6; y += 1.4) box(g, m.metal, width / 2, y, depth + 0.05, width - 0.2, 0.06, 0.1)

@@ -1,23 +1,28 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon'
 import type { Answers, ProjectPackage } from '../interview/engine'
 import {
   SHEET_SIZE,
+  addPlanDevice,
   buildModel,
+  generateSheetSet,
   generateShellSVG,
   layoutLighting,
   layoutPower,
   patchDeviceEdit,
+  sheetEditableLayers,
   sheetTransform,
   snapPlanOffset,
   type LightDevice,
   type PlanEdits,
   type PowerDevice,
+  type SheetKind,
   type SheetTheme,
 } from '../lib/drawing'
 import { planRoomModels, type ModelPlacement } from '../lib/modelKit'
+import { evaluateProposedLight, type CodeProfile } from '../lib/codeChecks'
 
-type AnyDevice = (PowerDevice | LightDevice) & { layer: 'power' | 'lighting' }
+type AnyDevice = (PowerDevice & { layer: 'power' }) | (LightDevice & { layer: 'lighting' })
 
 const KIND_LABEL: Record<string, string> = {
   gfci: 'GFCI receptacle',
@@ -38,12 +43,16 @@ export default function SheetEditor({
   answers,
   pkg,
   theme,
+  sheetKind,
+  codeProfile,
   edits,
   onChange,
 }: {
   answers: Answers
   pkg: ProjectPackage
   theme: SheetTheme
+  sheetKind: SheetKind
+  codeProfile?: CodeProfile
   edits: PlanEdits
   onChange: (e: PlanEdits) => void
 }) {
@@ -55,23 +64,37 @@ export default function SheetEditor({
 
   const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
   const tf = useMemo(() => sheetTransform(model), [model])
+  const editableLayers = useMemo(() => sheetEditableLayers(sheetKind), [sheetKind])
   const shell = useMemo(
-    () => generateShellSVG(answers, pkg, theme).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, ''),
-    [answers, pkg, theme],
+    () => {
+      const svg = editableLayers.length > 0
+        ? generateShellSVG(answers, pkg, theme)
+        : generateSheetSet(answers, pkg, theme, edits).find((sheet) => sheet.id === sheetKind)?.svg ?? generateShellSVG(answers, pkg, theme)
+      return svg.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')
+    },
+    [answers, pkg, theme, edits, sheetKind, editableLayers.length],
   )
 
   const devices: AnyDevice[] = useMemo(
     () => [
-      ...layoutPower(model, edits).map((d) => ({ ...d, layer: 'power' as const })),
-      ...layoutLighting(model, edits).map((d) => ({ ...d, layer: 'lighting' as const })),
+      ...(editableLayers.includes('power') ? layoutPower(model, edits).map((d) => ({ ...d, layer: 'power' as const })) : []),
+      ...(editableLayers.includes('lighting') ? layoutLighting(model, edits).map((d) => ({ ...d, layer: 'lighting' as const })) : []),
     ],
-    [model, edits],
+    [model, edits, editableLayers],
   )
   const furniture = useMemo(() => planRoomModels(model), [model])
   const sel = devices.find((d) => d.layer + ':' + d.id === selected) ?? null
 
-  function patch(layer: 'power' | 'lighting', id: string, up: Partial<{ dx: number; dy: number; removed: boolean; circuit: string }>) {
+  useEffect(() => setSelected(null), [sheetKind])
+
+  function patch(layer: 'power' | 'lighting', id: string, up: Partial<{ dx: number; dy: number; removed: boolean; circuit: string; wetLocationRated: boolean }>) {
     onChange(patchDeviceEdit(edits, layer, id, up))
+  }
+
+  function addLight() {
+    const id = `user-light-${Date.now().toString(36)}`
+    onChange(addPlanDevice(edits, 'lighting', { id, kind: 'can', x: snapPlanOffset(model.wFt / 2), y: snapPlanOffset(model.hFt / 2), wetLocationRated: false }))
+    setSelected(`lighting:${id}`)
   }
 
   /** Client px → sheet viewBox units. */
@@ -107,6 +130,9 @@ export default function SheetEditor({
   const dark = theme !== 'paper'
   const powerColor = theme === 'autocad' ? '#00FFFF' : '#8FC1FF'
   const lightColor = theme === 'autocad' ? '#FFFF00' : '#F59E0B'
+  const selectedLightCheck = sel?.layer === 'lighting' && sel.kind !== 'switch'
+    ? evaluateProposedLight(model, { x: sel.x, y: sel.y, wetLocationRated: sel.wetLocationRated ?? false }, codeProfile ?? { jurisdiction: 'Model code baseline', residentialCode: '2021 IRC', electricalCode: '2023 NEC' })
+    : null
 
   return (
     <div className="relative">
@@ -187,13 +213,13 @@ export default function SheetEditor({
       </svg>
 
       {/* Layer toggles */}
-      <div className="absolute left-3 top-3 flex gap-1.5">
+      {editableLayers.length > 0 && <div className="absolute left-3 top-3 flex gap-1.5">
         {(
           [
             ['Power', showPower, setShowPower],
             ['Lighting', showLighting, setShowLighting],
           ] as const
-        ).map(([label, on, set]) => (
+        ).filter(([label]) => label === 'Power' ? editableLayers.includes('power') : editableLayers.includes('lighting')).map(([label, on, set]) => (
           <button
             key={label}
             onClick={() => set(!on)}
@@ -204,7 +230,8 @@ export default function SheetEditor({
             {label}
           </button>
         ))}
-      </div>
+        {editableLayers.includes('lighting') && <button onClick={addLight} className="rounded-md border border-cyan/40 bg-cyan/10 px-2.5 py-1 text-[11px] font-600 text-cyan hover:bg-cyan/20">+ Add recessed light</button>}
+      </div>}
 
       {/* Inspector */}
       {sel && (
@@ -222,6 +249,8 @@ export default function SheetEditor({
               className="mt-1 w-full rounded-lg border border-line bg-ink px-2 py-1.5 text-mist outline-none focus:border-blueprint"
             />
           </label>
+          {sel.layer === 'lighting' && sel.kind !== 'switch' && <label className="mt-2 flex items-center gap-2 rounded border border-line bg-ink/70 p-2 text-[10px] text-muted"><input type="checkbox" checked={sel.wetLocationRated ?? false} onChange={(e) => patch(sel.layer, sel.id, { wetLocationRated: e.target.checked })} className="accent-cyan" /> Wet-location-rated fixture</label>}
+          {selectedLightCheck && <div className={`mt-2 rounded border p-2 text-[10px] leading-4 ${selectedLightCheck.status === 'block' ? 'border-red-400/40 bg-red-400/10 text-red-200' : 'border-amber-300/30 bg-amber-300/10 text-amber-100'}`}><p className="font-600">{selectedLightCheck.title}</p><p className="mt-1 opacity-80">{selectedLightCheck.reference}</p></div>}
           <button
             onClick={() => {
               patch(sel.layer, sel.id, { removed: true })
@@ -236,7 +265,7 @@ export default function SheetEditor({
       )}
 
       {/* Reset */}
-      {(edits.power || edits.lighting) && (
+      {editableLayers.length > 0 && (edits.power || edits.lighting) && (
         <button
           onClick={() => onChange({})}
           className="absolute bottom-3 right-3 rounded-lg border border-line bg-panel/90 px-2.5 py-1 text-[11px] text-muted transition hover:text-mist"
