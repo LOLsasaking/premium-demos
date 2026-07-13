@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icon'
-import PackageResult from './PackageResult'
+import ProjectWorkspace from './ProjectWorkspace'
 import SavedProjects from './SavedProjects'
 import { analyzeUploads, askNextQuestion, buildPackage, type VisionResult } from '../lib/ai'
 import { listProjects, removeProject, saveProject, updateProjectEdits, type SavedProject } from '../lib/store'
@@ -80,8 +81,16 @@ export default function InterviewStudio() {
   const savedRef = useRef(false)
   const projectIdRef = useRef<string | null>(null)
   const [savedEdits, setSavedEdits] = useState<PlanEdits | undefined>(undefined)
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
 
   useEffect(() => setProjects(listProjects()), [])
+
+  useEffect(() => {
+    if (!workspaceOpen || !pkg) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [workspaceOpen, pkg])
 
   const progress = useMemo(() => {
     const total = totalQuestions(answers)
@@ -109,6 +118,7 @@ export default function InterviewStudio() {
       await wait(1100)
       const result = await buildPackage(next)
       setPkg(result)
+      setWorkspaceOpen(true)
       setThinking(false)
       persist(next, result)
     }
@@ -197,6 +207,7 @@ export default function InterviewStudio() {
     setAttached(p.attachments.map((name) => ({ name })))
     setAnswers(p.answers)
     setPkg(p.pkg)
+    setWorkspaceOpen(true)
     setQuestion(null)
     setThinking(false)
     setMessages([{ role: 'ai', text: `Reopened your saved ${p.pkg.headline.toLowerCase()}.` }])
@@ -213,11 +224,27 @@ export default function InterviewStudio() {
     setQuestion(null)
     setThinking(false)
     setPkg(null)
+    setWorkspaceOpen(false)
     setDraft('')
     setProjects(listProjects())
   }
 
   return (
+    <>
+      {pkg && workspaceOpen && typeof document !== 'undefined' && createPortal(
+        <ProjectWorkspace
+          pkg={pkg}
+          answers={answers}
+          initialEdits={savedEdits}
+          onEditsChange={(edits) => {
+            setSavedEdits(edits)
+            if (projectIdRef.current) updateProjectEdits(projectIdRef.current, edits)
+          }}
+          onClose={() => setWorkspaceOpen(false)}
+          onNew={reset}
+        />,
+        document.body,
+      )}
     <section id="studio" className="scroll-mt-24 py-24 md:py-28">
       <div className="container-x">
         <div className="reveal mx-auto max-w-2xl text-center">
@@ -311,16 +338,10 @@ export default function InterviewStudio() {
 
                   {thinking && <Typing />}
 
-                  {pkg && (
-                    <PackageResult
-                      pkg={pkg}
-                      answers={answers}
-                      onRestart={reset}
-                      initialEdits={savedEdits}
-                      onEditsChange={(e) => {
-                        if (projectIdRef.current) updateProjectEdits(projectIdRef.current, e)
-                      }}
-                    />
+                  {pkg && !workspaceOpen && (
+                    <button onClick={() => setWorkspaceOpen(true)} className="btn-blue w-full py-3">
+                      Open generated workspace
+                    </button>
                   )}
                 </div>
 
@@ -369,6 +390,7 @@ export default function InterviewStudio() {
         </div>
       </div>
     </section>
+    </>
   )
 }
 

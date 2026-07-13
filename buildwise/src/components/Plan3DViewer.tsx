@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
 import { buildModel, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, type EditableLayer, type PlanEdits, type PlanModel } from '../lib/drawing'
+import { buildDetailedModel, createModelMaterials, planRoomModels } from '../lib/modelKit'
 
 /**
  * 3D model of the generated project — the same PlanModel and device layouts
@@ -14,19 +15,19 @@ import { buildModel, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffse
 type Layer = 'lights' | 'electrical' | 'plumbing' | 'framing'
 
 const C = {
-  bg: 0x0a0f1c,
-  floor: 0x131c30,
-  wall: 0x223252,
-  edge: 0x4a68a8,
-  counter: 0x1c2a47,
-  fixture: 0x2c3d61,
+  bg: 0x08111d,
+  floor: 0xaeb7b4,
+  wall: 0xe3e8e9,
+  edge: 0x45627e,
+  counter: 0xd8dadd,
+  fixture: 0x8493a0,
   glass: 0x3b82f6,
   wire: 0x3b82f6,
   water: 0x22d3ee,
   light: 0xf59e0b,
   stud: 0x8da0bf,
 }
-const WALL_H = 8
+const WALL_H = 7.2
 
 interface Built {
   scene: THREE.Scene
@@ -94,19 +95,18 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   root.position.set(-m.wFt / 2, 0, -m.hFt / 2)
   scene.add(root)
 
-  const ambient = new THREE.AmbientLight(0xbfd2f0, 0.5)
-  const hemi = new THREE.HemisphereLight(0x3b82f6, 0x0a0f1c, 0.35)
-  const key = new THREE.DirectionalLight(0x9db8e8, 0.55)
+  const ambient = new THREE.AmbientLight(0xffffff, 1.2)
+  const hemi = new THREE.HemisphereLight(0xd8ecff, 0x314254, 0.85)
+  const key = new THREE.DirectionalLight(0xffffff, 1.45)
   key.position.set(30, 45, 25)
   scene.add(ambient, hemi, key)
 
   const wallMats: THREE.MeshStandardMaterial[] = []
   const wallMat = () => {
-    const mat = new THREE.MeshStandardMaterial({ color: C.wall, roughness: 0.85, transparent: true, opacity: 0.96 })
+    const mat = new THREE.MeshStandardMaterial({ color: C.wall, roughness: 0.78, transparent: true, opacity: 0.9 })
     wallMats.push(mat)
     return mat
   }
-  const counterMat = new THREE.MeshStandardMaterial({ color: C.counter, roughness: 0.6 })
   const fixtureMat = new THREE.MeshStandardMaterial({ color: C.fixture, roughness: 0.5 })
   const selectables: THREE.Object3D[] = []
   const tag = (mesh: THREE.Object3D, layer: EditableLayer, id: string, kind: string, baseX: number, baseY: number) => {
@@ -178,36 +178,27 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
     root.add(glass)
   }
 
-  // Counters, island, appliances & fixtures.
-  const box = (x: number, z: number, w: number, d: number, h: number, mat: THREE.Material, y = 0) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
-    mesh.position.set(x + w / 2, y + h / 2, z + d / 2)
-    root.add(mesh)
-    return mesh
+  // Detailed local model kit. Every placement is derived from the same room
+  // geometry used by the plan sheets, so furnishings stay inside the plan.
+  const modelMaterials = createModelMaterials()
+  const furniture = new THREE.Group()
+  furniture.name = 'Detailed house models'
+  for (const placement of planRoomModels(m)) {
+    const object = buildDetailedModel(placement.kind, modelMaterials, placement.width, placement.depth)
+    object.position.set(placement.x, 0, placement.y)
+    object.rotation.y = placement.rotation ?? 0
+    object.name = placement.kind
+    furniture.add(object)
   }
-  for (const ct of m.counters) box(ct.x, ct.y, ct.w, ct.h, 3, counterMat)
-  if (m.island) {
-    const isl = box(m.island.x, m.island.y, m.island.w, m.island.h, 3, counterMat)
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(isl.geometry),
-      new THREE.LineBasicMaterial({ color: C.edge }),
-    )
-    edges.position.copy(isl.position)
-    root.add(edges)
-  }
+  root.add(furniture)
+
+  // Mechanical equipment not represented by a room furnishing.
   for (const ap of m.appliances) {
-    if (ap.label === 'REF') box(ap.x - 1.2, ap.y - 1.2, 2.4, 2.4, 6, fixtureMat)
-    else if (ap.label === 'WH') {
+    if (ap.label === 'WH') {
       const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 4.6, 16), fixtureMat)
       wh.position.set(ap.x, 2.3, ap.y)
       root.add(wh)
-    } else if (ap.label === 'TUB') box(ap.x - 1.35, ap.y - 0.7, 2.7, 1.4, 1.6, fixtureMat)
-    else if (ap.label === 'WC') {
-      const wc = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.4, 12), fixtureMat)
-      wc.position.set(ap.x, 0.7, ap.y + 0.3)
-      root.add(wc)
-      box(ap.x - 0.65, ap.y - 0.55, 1.3, 0.5, 2.4, fixtureMat)
-    } else if (ap.label === 'LAV') box(ap.x - 0.65, ap.y - 0.5, 1.3, 1, 2.8, fixtureMat)
+    }
   }
 
   /* ---- LIGHTS layer ------------------------------------------------ */
@@ -364,11 +355,14 @@ export default function Plan3DViewer({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.15
     mount.appendChild(renderer.domElement)
 
     const span = Math.max(m.wFt, m.hFt)
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 400)
-    camera.position.set(span * 0.75, span * 0.62, span * 0.95)
+    camera.position.set(span * 0.72, span * 0.92, span * 0.98)
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -478,9 +472,9 @@ export default function Plan3DViewer({
     b.groups.framing.visible = layers.framing
     for (const pl of b.pointLights) pl.visible = layers.lights
     for (const fm of b.fixtureMats) fm.emissiveIntensity = layers.lights ? 1.2 : 0.08
-    b.ambient.intensity = layers.lights ? 0.5 : 0.3
+    b.ambient.intensity = layers.lights ? 1.2 : 0.78
     for (const wm of b.wallMats) {
-      wm.opacity = layers.framing ? 0.13 : 0.96
+      wm.opacity = layers.framing ? 0.13 : 0.9
       wm.needsUpdate = true
     }
   }, [layers])
