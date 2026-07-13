@@ -1,9 +1,9 @@
-# BuildWise AI
+# Cadvora
 
 > The AI architect & engineer for residential construction.
 > **Upload your house. Tell us what you want. Receive professional construction plans in minutes.**
 
-BuildWise interviews a homeowner the way a seasoned contractor would, reads their
+Cadvora interviews a homeowner the way a seasoned contractor would, reads their
 floor plans and photos, and produces a **coordinated construction package** across
 every discipline — electrical, plumbing, HVAC, structural, interior, exterior,
 solar and smart home — with material lists, cost bands, a schedule, and a clear note
@@ -120,7 +120,7 @@ Then point the frontend at it and restart `npm run dev`:
 
 ```bash
 # buildwise/.env
-VITE_BUILDWISE_API_URL=http://localhost:8787
+VITE_CADVORA_API_URL=http://localhost:8787
 ```
 
 That's the only change needed — `src/lib/ai.ts` picks it up automatically and the UI
@@ -136,6 +136,6 @@ unreachable or errors, the app silently falls back to the local engine.
 
 ## Disclaimer
 
-BuildWise output is illustrative and for planning only. All plans must be reviewed
+Cadvora output is illustrative and for planning only. All plans must be reviewed
 and stamped by appropriately licensed professionals and pass local plan review before
 any construction or permitting.

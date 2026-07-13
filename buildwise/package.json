@@ -1,12 +1,13 @@
 {
-  "name": "buildwise-ai",
+  "name": "cadvora",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "BuildWise AI — the AI architect & engineer for residential construction. Upload your house, have a conversation, receive a professional construction package.",
+  "description": "Cadvora — coordinated technical diagrams from project requirements.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "models:generate": "node scripts/generate-technical-models.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

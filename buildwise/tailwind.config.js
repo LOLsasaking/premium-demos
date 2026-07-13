@@ -4,15 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#0A0F1C',        // base background (deep architectural navy)
-        panel: '#111827',      // raised panel
-        panel2: '#161F31',     // secondary panel
-        line: '#24304A',       // hairline borders
-        blueprint: '#3B82F6',  // blueprint blue (primary accent)
-        cyan: '#22D3EE',       // schematic cyan
-        build: '#F59E0B',      // build amber (action / warmth)
-        mist: '#E6EDF7',       // primary text
-        muted: '#8DA0BF',      // secondary text
+        ink: '#050B14',
+        panel: '#0B1422',
+        panel2: '#101C2D',
+        line: '#1D3048',
+        blueprint: '#2F6BFF',
+        cyan: '#22D3EE',
+        build: '#22D3EE',
+        mist: '#EAF2FC',
+        muted: '#91A4BD',
       },
       fontFamily: {
         display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],

@@ -94,7 +94,7 @@ export function generateDXF(a: Answers, pkg: ProjectPackage, edits?: PlanEdits):
 
   // Annotation.
   d.text('ANNO', m.wFt / 2 - 2.4, Y(m.hFt / 2) - 0.4, 0.5, m.isKitchen ? 'KITCHEN' : 'ROOM')
-  d.text('ANNO', 0, -1.2, 0.35, `${pkg.headline.toUpperCase()} - BUILDWISE AI DRAFT - NOT FOR CONSTRUCTION`)
+  d.text('ANNO', 0, -1.2, 0.35, `${pkg.headline.toUpperCase()} - CADVORA DRAFT - NOT FOR CONSTRUCTION`)
   d.text('ANNO', 0, -1.9, 0.28, `E-1/E-2 COMBINED - UNITS: FEET - SCALE FROM DIMENSIONS`)
 
   return d.toString()

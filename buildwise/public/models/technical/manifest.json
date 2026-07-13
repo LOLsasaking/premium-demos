@@ -1,0 +1,75 @@
+{
+  "generated": "2026-07-13T02:13:26.908Z",
+  "license": "Original Cadvora asset kit — project use permitted",
+  "totalBytes": 872756,
+  "assets": {
+    "bulb-a19": {
+      "file": "bulb-a19.glb",
+      "bytes": 131312
+    },
+    "bulb-smart": {
+      "file": "bulb-smart.glb",
+      "bytes": 151180
+    },
+    "outlet-duplex": {
+      "file": "outlet-duplex.glb",
+      "bytes": 22612
+    },
+    "outlet-smart": {
+      "file": "outlet-smart.glb",
+      "bytes": 47056
+    },
+    "plug-grounded": {
+      "file": "plug-grounded.glb",
+      "bytes": 15860
+    },
+    "switch-rocker": {
+      "file": "switch-rocker.glb",
+      "bytes": 4324
+    },
+    "switch-smart": {
+      "file": "switch-smart.glb",
+      "bytes": 27612
+    },
+    "junction-box": {
+      "file": "junction-box.glb",
+      "bytes": 19396
+    },
+    "panel": {
+      "file": "panel.glb",
+      "bytes": 57436
+    },
+    "pipe-straight": {
+      "file": "pipe-straight.glb",
+      "bytes": 45848
+    },
+    "pipe-elbow": {
+      "file": "pipe-elbow.glb",
+      "bytes": 32512
+    },
+    "pipe-tee": {
+      "file": "pipe-tee.glb",
+      "bytes": 32768
+    },
+    "pipe-ptrap": {
+      "file": "pipe-ptrap.glb",
+      "bytes": 32660
+    },
+    "valve-shutoff": {
+      "file": "valve-shutoff.glb",
+      "bytes": 46252
+    },
+    "floor-drain": {
+      "file": "floor-drain.glb",
+      "bytes": 23908
+    },
+    "light-recessed": {
+      "file": "light-recessed.glb",
+      "bytes": 34772
+    },
+    "light-pendant": {
+      "file": "light-pendant.glb",
+      "bytes": 147248
+    }
+  }
+}

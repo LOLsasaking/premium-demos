@@ -134,8 +134,8 @@ describe('plan sheets', () => {
 
   it('produces one sheet per relevant trade', () => {
     expect(hasPlanDrawing(pkg)).toBe(true)
-    // Kitchen w/ solar+smart+EV: electrical, plumbing, HVAC (no structural).
-    expect(sheets.map((s: Sheet) => s.no)).toEqual(['E-1', 'E-2', 'P-1', 'M-1'])
+    // Every project includes construction; this kitchen also has electrical, plumbing, and HVAC.
+    expect(sheets.map((s: Sheet) => s.no)).toEqual(['C-1', 'E-1', 'E-2', 'P-1', 'M-1'])
   })
 
   it('draws real trade symbols on each sheet', () => {
@@ -158,11 +158,11 @@ describe('plan sheets', () => {
   })
 
   it('renders all three themes with their palettes', () => {
-    const cad = generateSheetSet(BASE, pkg, 'autocad')[0].svg
+    const cad = generateSheetSet(BASE, pkg, 'autocad').find((sheet) => sheet.id === 'power')!.svg
     expect(cad).toContain('#000000') // model-space black
     expect(cad).toContain('#00FFFF') // cyan device layer
     expect(cad).toContain('MODEL SPACE PREVIEW')
-    expect(generateSheetSet(BASE, pkg, 'paper')[0].svg).toContain('#FFFFFF')
+    expect(generateSheetSet(BASE, pkg, 'paper').find((sheet) => sheet.id === 'construction')!.svg).toContain('#FFFFFF')
   })
 
   it('shapes the room from an analyzed upload aspect ratio', () => {
