@@ -354,9 +354,17 @@ export interface DeviceEdit {
   wetLocationRated?: boolean
 }
 
+export interface FurnitureEdit {
+  dx?: number
+  dy?: number
+  rotation?: number
+  removed?: boolean
+}
+
 export interface PlanEdits {
   power?: Record<string, DeviceEdit>
   lighting?: Record<string, DeviceEdit>
+  furniture?: Record<string, FurnitureEdit>
   additions?: { power?: PowerDevice[]; lighting?: LightDevice[] }
 }
 
@@ -382,6 +390,16 @@ export function patchDeviceEdit(
     [layer]: {
       ...(edits[layer] ?? {}),
       [id]: { ...edits[layer]?.[id], ...update },
+    },
+  }
+}
+
+export function patchFurnitureEdit(edits: PlanEdits, id: string, update: Partial<FurnitureEdit>): PlanEdits {
+  return {
+    ...edits,
+    furniture: {
+      ...(edits.furniture ?? {}),
+      [id]: { ...edits.furniture?.[id], ...update },
     },
   }
 }

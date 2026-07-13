@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generatePackage, type Answers } from '../interview/engine'
 import { buildModel } from './drawing'
-import { planRoomModels } from './modelKit'
+import { framingMembers, layoutFurniture, planRoomModels } from './modelKit'
 
 const base: Answers = { structure: 'wood', area: 'm', gas: 'no', budget: 'mid', tenure: 'long', ev: 'no', smart: 'basic', solar: 'no', region: 'US' }
 
@@ -47,5 +47,30 @@ describe('detailed house model planning', () => {
       expect(placement.x + placement.width).toBeLessThanOrEqual(model.wFt)
       expect(placement.y + placement.depth).toBeLessThanOrEqual(model.hFt)
     }
+  })
+
+  it('assigns stable unique ids and applies shared furniture edits', () => {
+    const answers: Answers = { ...base, project: 'newbuild', area: 'xl', beds: '3', baths: '2', stories: '1', garage: '2' }
+    const model = buildModel(answers, generatePackage(answers))
+    const first = planRoomModels(model)
+    const second = planRoomModels(model)
+    expect(first.map((item) => item.id)).toEqual(second.map((item) => item.id))
+    expect(new Set(first.map((item) => item.id)).size).toBe(first.length)
+    const sofa = first.find((item) => item.kind === 'sofa')!
+    const edited = layoutFurniture(model, { furniture: { [sofa.id]: { dx: 1.25, dy: -0.5, rotation: Math.PI / 2 } } })
+      .find((item) => item.id === sofa.id)!
+    expect(edited.x).toBeCloseTo(sofa.x + 1.25)
+    expect(edited.y).toBeCloseTo(sofa.y - 0.5)
+    expect(edited.rotation).toBeCloseTo(Math.PI / 2)
+  })
+
+  it('generates a complete framing assembly with interior walls and floor joists', () => {
+    const answers: Answers = { ...base, project: 'newbuild', area: 'xl', beds: '3', baths: '2', stories: '1', garage: '2' }
+    const model = buildModel(answers, generatePackage(answers))
+    const members = framingMembers(model)
+    expect(members.filter((member) => member.kind === 'stud').length).toBeGreaterThan(50)
+    expect(members.some((member) => member.kind === 'plate' && member.scope === 'interior')).toBe(true)
+    expect(members.some((member) => member.kind === 'header')).toBe(true)
+    expect(members.filter((member) => member.kind === 'joist').length).toBeGreaterThan(10)
   })
 })

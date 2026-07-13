@@ -1,4 +1,5 @@
 import type { LightDevice, PlanModel, PowerDevice } from './drawing'
+import type { ModelPlacement } from './modelKit'
 
 export interface CodeProfile {
   jurisdiction: string
@@ -28,12 +29,21 @@ const SOURCES = {
 } as const
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+const footprintBounds = (item: ModelPlacement) => {
+  const angle = item.rotation ?? 0
+  const halfW = (Math.abs(Math.cos(angle)) * item.width + Math.abs(Math.sin(angle)) * item.depth) / 2
+  const halfH = (Math.abs(Math.sin(angle)) * item.width + Math.abs(Math.cos(angle)) * item.depth) / 2
+  const cx = item.x + item.width / 2
+  const cy = item.y + item.depth / 2
+  return { left: cx - halfW, right: cx + halfW, top: cy - halfH, bottom: cy + halfH }
+}
 
 export function evaluatePlanChecks(
   model: PlanModel,
   power: PowerDevice[],
   lighting: LightDevice[],
   profile: CodeProfile,
+  furniture: ModelPlacement[] = [],
 ): CodeCheck[] {
   const checks: CodeCheck[] = []
   const lavatories = model.appliances.filter((fixture) => fixture.label === 'LAV')
@@ -96,6 +106,35 @@ export function evaluatePlanChecks(
     title: fixedLights.length > 0 ? `${fixedLights.length} lighting outlets are represented` : 'No lighting outlet is represented',
     detail: 'Fixture photometrics, circuit loading, box fill, conductor sizing, and switching still require project-specific design review.',
     reference: `${profile.residentialCode} E3903; ${profile.electricalCode} 210.70`, sourceUrl: SOURCES.electrical,
+  })
+
+  const collisions: [ModelPlacement, ModelPlacement][] = []
+  for (let i = 0; i < furniture.length; i++) for (let j = i + 1; j < furniture.length; j++) {
+    const a = furniture[i]
+    const b = furniture[j]
+    const ab = footprintBounds(a)
+    const bb = footprintBounds(b)
+    const overlapX = Math.min(ab.right, bb.right) - Math.max(ab.left, bb.left)
+    const overlapY = Math.min(ab.bottom, bb.bottom) - Math.max(ab.top, bb.top)
+    if (overlapX > 0.15 && overlapY > 0.15) collisions.push([a, b])
+  }
+  checks.push({
+    id: 'object-clearance', discipline: 'general', status: collisions.length ? 'warn' : 'pass',
+    title: collisions.length ? `${collisions.length} object-footprint conflict${collisions.length === 1 ? '' : 's'} detected` : 'Modeled object footprints do not overlap',
+    detail: collisions.length
+      ? collisions.slice(0, 3).map(([a, b]) => `${a.kind.replace(/-/g, ' ')} overlaps ${b.kind.replace(/-/g, ' ')}`).join('; ') + '. Verify circulation, required fixture clearances, door swings, and accessibility dimensions.'
+      : 'Measured plan footprints clear one another. Door swings, work clearances, accessibility, and manufacturer service zones still require project review.',
+    reference: 'Measured coordination screen; verify applicable IRC/IPC and accessibility provisions', sourceUrl: SOURCES.fire,
+  })
+  const outside = furniture.filter((item) => {
+    const bounds = footprintBounds(item)
+    return bounds.left < 0 || bounds.top < 0 || bounds.right > model.wFt || bounds.bottom > model.hFt
+  })
+  checks.push({
+    id: 'object-boundary', discipline: 'general', status: outside.length ? 'block' : 'pass',
+    title: outside.length ? `${outside.length} rotated object${outside.length === 1 ? '' : 's'} cross the modeled boundary` : 'Object footprints stay inside the modeled boundary',
+    detail: outside.length ? `${outside.map((item) => item.kind.replace(/-/g, ' ')).join(', ')} must be moved or rotated within the plan.` : 'Measured rotated bounding boxes remain inside the generated footprint.',
+    reference: 'Measured plan geometry', sourceUrl: SOURCES.fire,
   })
 
   checks.push({

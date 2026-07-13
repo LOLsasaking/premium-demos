@@ -1,11 +1,12 @@
-import { Suspense, lazy, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
 import Icon from './Icon'
 import Logo from './Logo'
 import SheetEditor from './SheetEditor'
 import { exportDXF, exportHTML, exportJSON } from '../lib/export'
-import { buildModel, generateSheetSet, hasPlanDrawing, layoutLighting, layoutPower, type PlanEdits, type SheetKind } from '../lib/drawing'
+import { addPlanDevice, buildModel, generateSheetSet, hasPlanDrawing, layoutLighting, layoutPower, snapPlanOffset, type PlanEdits, type SheetKind } from '../lib/drawing'
 import { DISCIPLINES, formatUSD, type Answers, type ProjectPackage } from '../interview/engine'
 import { evaluatePlanChecks, type CodeCheck, type CodeProfile } from '../lib/codeChecks'
+import { layoutFurniture } from '../lib/modelKit'
 
 const Plan3DViewer = lazy(() => import('./Plan3DViewer'))
 
@@ -32,17 +33,52 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
   const [edits, setEdits] = useState<PlanEdits>(initialEdits ?? {})
   const [exportOpen, setExportOpen] = useState(false)
   const [sidePanel, setSidePanel] = useState<'explorer' | 'checks'>('explorer')
+  const [toolMode, setToolMode] = useState<'select' | 'measure'>('select')
+  const [insertOpen, setInsertOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [cutaway, setCutaway] = useState(72)
+  const [systemGlow, setSystemGlow] = useState(65)
   const [codeProfile, setCodeProfile] = useState<CodeProfile>({ jurisdiction: 'Model code baseline — verify local adoption', residentialCode: '2021 IRC', electricalCode: '2023 NEC' })
   const sheets = useMemo(() => hasPlanDrawing(pkg) ? generateSheetSet(answers, pkg, 'autocad', edits) : [], [answers, pkg, edits])
   const active = sheets.find((sheet) => sheet.id === sheetId) ?? sheets[0]
   const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
-  const codeChecks = useMemo(() => evaluatePlanChecks(model, layoutPower(model, edits), layoutLighting(model, edits), codeProfile), [model, edits, codeProfile])
+  const codeChecks = useMemo(() => evaluatePlanChecks(model, layoutPower(model, edits), layoutLighting(model, edits), codeProfile, layoutFurniture(model, edits)), [model, edits, codeProfile])
   const issueCount = codeChecks.filter((check) => check.status === 'block' || check.status === 'warn').length
-  const editCount = Object.keys(edits.power ?? {}).length + Object.keys(edits.lighting ?? {}).length + (edits.additions?.power?.length ?? 0) + (edits.additions?.lighting?.length ?? 0)
+  const editCount = Object.keys(edits.power ?? {}).length + Object.keys(edits.lighting ?? {}).length + Object.keys(edits.furniture ?? {}).length + (edits.additions?.power?.length ?? 0) + (edits.additions?.lighting?.length ?? 0)
 
-  function changeEdits(next: PlanEdits) {
+  const changeEdits = useCallback((next: PlanEdits) => {
     setEdits(next)
     onEditsChange?.(next)
+  }, [onEditsChange])
+
+  function addObject(kind: 'light' | 'outlet') {
+    const id = `user-${kind}-${Date.now().toString(36)}`
+    const x = snapPlanOffset(model.wFt / 2)
+    const y = snapPlanOffset(model.hFt / 2)
+    changeEdits(kind === 'light'
+      ? addPlanDevice(edits, 'lighting', { id, kind: 'can', x, y, wetLocationRated: false })
+      : addPlanDevice(edits, 'power', { id, kind: 'recep', x, y }))
+    setSheetId(kind === 'light' ? 'lighting' : 'power')
+    setToolMode('select')
+    setInsertOpen(false)
+  }
+
+  function runCommand(command: string) {
+    setInsertOpen(false)
+    if (command === 'Insert') setInsertOpen(true)
+    if (command === 'Inspect') setSidePanel('explorer')
+    if (command === 'Systems') { setView('split'); setSheetId(sheets.some((sheet) => sheet.id === 'plumbing') ? 'plumbing' : 'power') }
+    if (command === 'Sections') { setView('3d'); setSheetId(sheets.some((sheet) => sheet.id === 'framing') ? 'framing' : 'construction') }
+    if (command === 'Perform') setSidePanel('checks')
+  }
+
+  function runTool(label: string) {
+    if (label === 'Select') setToolMode('select')
+    if (label === 'Plan') { setToolMode('select'); setView('2d'); setSheetId('construction') }
+    if (label === 'Systems') runCommand('Systems')
+    if (label === 'Measure') { setToolMode('measure'); setView('2d') }
+    if (label === 'Notes') setNotesOpen(true)
   }
 
   return (
@@ -53,7 +89,7 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           <span className="hidden sm:inline-flex"><Logo size={29} /></span>
           <span className="hidden h-5 w-px bg-line sm:block" />
           <nav className="hidden items-center gap-1 xl:flex" aria-label="Workspace commands">
-            {['Insert', 'Inspect', 'Systems', 'Sections', 'Perform'].map((item, index) => <button key={item} className={`rounded px-2.5 py-1.5 text-[11px] transition hover:bg-cyan/10 hover:text-cyan ${index === 0 ? 'text-cyan' : 'text-[#9aabc0]'}`}>{item}</button>)}
+            {['Insert', 'Inspect', 'Systems', 'Sections', 'Perform'].map((item, index) => <button key={item} onClick={() => runCommand(item)} className={`rounded px-2.5 py-1.5 text-[11px] transition hover:bg-cyan/10 hover:text-cyan ${index === 0 ? 'text-cyan' : 'text-[#9aabc0]'}`}>{item}</button>)}
           </nav>
           <div className="hidden min-w-0 sm:block"><p className="truncate text-xs font-600 text-white">{pkg.headline}</p><p className="hidden font-mono text-[8px] uppercase tracking-[.15em] text-muted md:block">Project workspace · autosaved locally</p></div>
         </div>
@@ -66,8 +102,21 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
         </div>
       </header>
 
+      {insertOpen && <div className="absolute left-52 top-14 z-[120] w-64 rounded-xl border border-cyan/30 bg-[#0b1624]/98 p-3 shadow-2xl backdrop-blur">
+        <div className="flex items-center justify-between"><p className="text-xs font-600 text-white">Insert coordinated object</p><button onClick={() => setInsertOpen(false)} className="text-muted hover:text-white">×</button></div>
+        <p className="mt-1 text-[10px] leading-4 text-muted">Objects are placed at plan center, then can be dragged in either view.</p>
+        <button onClick={() => addObject('light')} className="mt-3 flex w-full items-center justify-between rounded-lg border border-line bg-panel px-3 py-2 text-left text-xs text-mist hover:border-cyan"><span>Recessed light</span><span className="text-amber-300">E-2</span></button>
+        <button onClick={() => addObject('outlet')} className="mt-2 flex w-full items-center justify-between rounded-lg border border-line bg-panel px-3 py-2 text-left text-xs text-mist hover:border-cyan"><span>Duplex receptacle</span><span className="text-cyan">E-1</span></button>
+      </div>}
+
+      {notesOpen && <div className="absolute left-16 top-20 z-[120] w-80 rounded-xl border border-cyan/30 bg-[#0b1624]/98 p-4 shadow-2xl backdrop-blur">
+        <div className="flex items-center justify-between"><p className="text-xs font-600 text-white">Project notes</p><button onClick={() => setNotesOpen(false)} className="text-muted hover:text-white">×</button></div>
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add field notes, coordination questions, or review comments…" className="mt-3 h-40 w-full resize-none rounded-lg border border-line bg-[#050910] p-3 text-xs leading-5 text-white outline-none focus:border-cyan" />
+        <p className="mt-2 font-mono text-[8px] uppercase text-muted">Saved with this workspace session</p>
+      </div>}
+
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-[#070e18] py-3 md:flex">{tools.map(([label, path], index) => <button key={label} title={label} aria-label={label} className={`grid h-10 w-10 place-items-center rounded-md border text-muted transition hover:text-white ${index === 0 ? 'border-cyan/30 bg-cyan/10 text-cyan' : 'border-transparent'}`}><Icon path={path} size={18} /></button>)}</aside>
+        <aside className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-[#070e18] py-3 md:flex">{tools.map(([label, path]) => <button key={label} title={label} aria-label={label} onClick={() => runTool(label)} className={`grid h-10 w-10 place-items-center rounded-md border text-muted transition hover:text-white ${(label === 'Select' && toolMode === 'select') || (label === 'Measure' && toolMode === 'measure') ? 'border-cyan/30 bg-cyan/10 text-cyan' : 'border-transparent'}`}><Icon path={path} size={18} /></button>)}</aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-[#070e18] px-2 py-1.5">
@@ -76,8 +125,8 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           </div>
 
           <div className={`grid min-h-0 flex-1 bg-black ${view === 'split' ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-            {view !== '3d' && <section className={`relative min-h-[340px] overflow-auto border-line bg-black ${view === 'split' ? 'lg:border-r' : ''}`} aria-label="Editable 2D plan"><div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-black/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan">{active?.name ?? '2D plan'} · {active && ['power', 'lighting'].includes(active.id) ? 'editable · live' : 'coordinated trade sheet'}</div><SheetEditor answers={answers} pkg={pkg} theme="autocad" sheetKind={active?.id ?? 'construction'} codeProfile={codeProfile} edits={edits} onChange={changeEdits} /></section>}
-            {view !== '2d' && <section className="relative min-h-[340px] overflow-hidden" aria-label="Editable 3D model"><Suspense fallback={<div className="grid h-full min-h-[420px] place-items-center font-mono text-xs text-muted">Constructing detailed house model…</div>}><Plan3DViewer answers={answers} pkg={pkg} edits={edits} onChange={changeEdits} focusSheet={active?.id} className="h-full min-h-[420px]" /></Suspense></section>}
+            {view !== '3d' && <section className={`relative min-h-[340px] overflow-auto border-line bg-black ${view === 'split' ? 'lg:border-r' : ''}`} aria-label="Editable 2D plan"><div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-black/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan">{active?.name ?? '2D plan'} · {toolMode === 'measure' ? 'measurement mode' : 'editable · live'}</div><SheetEditor answers={answers} pkg={pkg} theme="autocad" sheetKind={active?.id ?? 'construction'} codeProfile={codeProfile} edits={edits} onChange={changeEdits} toolMode={toolMode} /></section>}
+            {view !== '2d' && <section className="relative min-h-[340px] overflow-hidden" aria-label="Editable 3D model"><Suspense fallback={<div className="grid h-full min-h-[420px] place-items-center font-mono text-xs text-muted">Constructing detailed house model…</div>}><Plan3DViewer answers={answers} pkg={pkg} edits={edits} onChange={changeEdits} focusSheet={active?.id} cutaway={cutaway} systemGlow={systemGlow} className="h-full min-h-[420px]" /></Suspense></section>}
           </div>
         </main>
 
@@ -93,7 +142,7 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
             <div className="ml-5 flex items-center gap-2 border-l border-line px-3 py-1.5 text-[10px] text-[#aab8c8]"><Icon path="M4 4h16v16H4zM4 12h16" size={12} /><span className="flex-1">Furniture</span><span className="text-cyan">●</span></div>
           </div>
           <div className="mt-6 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">Project summary</p><dl className="mt-3 grid grid-cols-2 gap-2"><Summary label="Cost" value={`${formatUSD(pkg.costLow)}–${formatUSD(pkg.costHigh)}`} /><Summary label="Timeline" value={`${pkg.timelineWeeks[0]}–${pkg.timelineWeeks[1]} wks`} /><Summary label="Sheets" value={String(sheets.length)} /><Summary label="Edits" value={String(editCount)} /></dl></div>
-          <div className="mt-5 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">View properties</p><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">Cutaway</span><input type="range" min="0" max="100" defaultValue="72" className="h-1 flex-1 accent-cyan" /></label><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">System glow</span><input type="range" min="0" max="100" defaultValue="65" className="h-1 flex-1 accent-blueprint" /></label></div>
+          <div className="mt-5 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">View properties</p><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">Cutaway</span><input aria-label="Cutaway opacity" type="range" min="0" max="100" value={cutaway} onChange={(event) => setCutaway(Number(event.target.value))} className="h-1 flex-1 accent-cyan" /></label><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">System glow</span><input aria-label="System glow" type="range" min="0" max="100" value={systemGlow} onChange={(event) => setSystemGlow(Number(event.target.value))} className="h-1 flex-1 accent-blueprint" /></label></div>
           <div className="mt-6 rounded-lg border border-cyan/20 bg-cyan/5 p-3 text-[11px] leading-5 text-muted"><span className="font-600 text-cyan">Professional review required.</span> Cadvora accelerates planning and coordination; qualified professionals must review final construction documents.</div>
           </div> : <CodeReviewPanel profile={codeProfile} onProfileChange={setCodeProfile} checks={codeChecks} />}
         </aside>

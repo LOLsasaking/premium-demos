@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { evaluatePlanChecks, evaluateProposedLight, type CodeProfile } from './codeChecks'
 import { buildModel, layoutLighting, layoutPower, type PlanModel } from './drawing'
 import { generatePackage, type Answers } from '../interview/engine'
+import type { ModelPlacement } from './modelKit'
 
 const profile: CodeProfile = { jurisdiction: 'Model code baseline', residentialCode: '2021 IRC', electricalCode: '2023 NEC' }
 const base: Answers = { project: 'bathroom', structure: 'wood', area: 'm', gas: 'no', budget: 'mid', tenure: 'long', ev: 'no', smart: 'basic', solar: 'no', region: 'US' }
@@ -41,5 +42,20 @@ describe('advisory code checks', () => {
     const pkg = generatePackage(kitchenAnswers)
     const model = buildModel(kitchenAnswers, pkg)
     expect(evaluatePlanChecks(model, layoutPower(model), layoutLighting(model), profile).some((check) => check.id === 'bath-gfci')).toBe(false)
+  })
+
+  it('flags overlapping edited object footprints as a measured coordination conflict', () => {
+    const model: PlanModel = {
+      wFt: 12, hFt: 10, isKitchen: false, counters: [], island: null,
+      door: { wall: 'E', pos: 4, width: 3 }, window: { wall: 'N', pos: 2, width: 3 },
+      appliances: [], hasPlumbing: false, hasEV: false,
+    }
+    const furniture: ModelPlacement[] = [
+      { id: 'sofa-1', kind: 'sofa', x: 2, y: 2, width: 5, depth: 3 },
+      { id: 'coffee-table-2', kind: 'coffee-table', x: 4, y: 3, width: 3, depth: 2 },
+    ]
+    const check = evaluatePlanChecks(model, [], [], profile, furniture).find((item) => item.id === 'object-clearance')
+    expect(check?.status).toBe('warn')
+    expect(check?.detail).toContain('sofa')
   })
 })

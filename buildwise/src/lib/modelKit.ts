@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { PlanModel, Room } from './drawing'
+import type { PlanEdits, PlanModel, Room } from './drawing'
 
 export type ModelKind =
   | 'bed'
@@ -18,6 +18,7 @@ export type ModelKind =
   | 'garage-storage'
 
 export interface ModelPlacement {
+  id: string
   kind: ModelKind
   x: number
   y: number
@@ -25,6 +26,8 @@ export interface ModelPlacement {
   depth: number
   rotation?: number
 }
+
+type PlacementDraft = Omit<ModelPlacement, 'id'>
 
 export interface ModelMaterials {
   wood: THREE.MeshStandardMaterial
@@ -38,7 +41,7 @@ export interface ModelMaterials {
   glass: THREE.MeshStandardMaterial
 }
 
-const inside = (room: Room, kind: ModelKind, x: number, y: number, width: number, depth: number, rotation = 0): ModelPlacement => ({
+const inside = (room: Room, kind: ModelKind, x: number, y: number, width: number, depth: number, rotation = 0): PlacementDraft => ({
   kind,
   x: Math.max(room.x + 0.35, Math.min(x, room.x + room.w - width - 0.35)),
   y: Math.max(room.y + 0.35, Math.min(y, room.y + room.h - depth - 0.35)),
@@ -48,7 +51,8 @@ const inside = (room: Room, kind: ModelKind, x: number, y: number, width: number
 })
 
 export function planRoomModels(model: PlanModel): ModelPlacement[] {
-  const out: ModelPlacement[] = []
+  const out: PlacementDraft[] = []
+  const finish = (placements: PlacementDraft[]) => placements.map((placement, index) => ({ ...placement, id: `${placement.kind}-${index + 1}` }))
   if (!model.rooms) {
     if (model.isKitchen) {
       out.push(
@@ -68,7 +72,7 @@ export function planRoomModels(model: PlanModel): ModelPlacement[] {
         { kind: 'vanity', x: model.wFt - 2.2, y: 0.35, width: 1.85, depth: 3.1 },
       )
     }
-    return out.map((p) => ({ ...p, x: Math.max(0, Math.min(p.x, model.wFt - p.width)), y: Math.max(0, Math.min(p.y, model.hFt - p.depth)) }))
+    return finish(out.map((p) => ({ ...p, x: Math.max(0, Math.min(p.x, model.wFt - p.width)), y: Math.max(0, Math.min(p.y, model.hFt - p.depth)) })))
   }
 
   for (const room of model.rooms) {
@@ -94,7 +98,94 @@ export function planRoomModels(model: PlanModel): ModelPlacement[] {
       out.push(inside(room, 'garage-storage', room.x + 0.45, room.y + 0.45, Math.min(6, room.w - 1), 1.5))
     }
   }
-  return out
+  return finish(out)
+}
+
+export function layoutFurniture(model: PlanModel, edits?: PlanEdits): ModelPlacement[] {
+  return planRoomModels(model)
+    .filter((placement) => !edits?.furniture?.[placement.id]?.removed)
+    .map((placement) => {
+      const edit = edits?.furniture?.[placement.id]
+      if (!edit) return placement
+      return {
+        ...placement,
+        x: Math.max(0, Math.min(model.wFt - placement.width, placement.x + (edit.dx ?? 0))),
+        y: Math.max(0, Math.min(model.hFt - placement.depth, placement.y + (edit.dy ?? 0))),
+        rotation: edit.rotation ?? placement.rotation ?? 0,
+      }
+    })
+}
+
+export interface FramingMember {
+  id: string
+  kind: 'stud' | 'plate' | 'header' | 'joist' | 'blocking'
+  scope: 'exterior' | 'interior' | 'floor'
+  x: number
+  y: number
+  z: number
+  length: number
+  height: number
+  width: number
+  depth: number
+  rotation: number
+}
+
+export function framingMembers(model: PlanModel): FramingMember[] {
+  const members: FramingMember[] = []
+  let n = 0
+  const add = (member: Omit<FramingMember, 'id'>) => members.push({ ...member, id: `${member.kind}-${++n}` })
+  const wall = (x1: number, z1: number, x2: number, z2: number, scope: 'exterior' | 'interior') => {
+    const length = Math.hypot(x2 - x1, z2 - z1)
+    if (length < 0.5) return
+    const rotation = -Math.atan2(z2 - z1, x2 - x1)
+    const cx = (x1 + x2) / 2
+    const cz = (z1 + z2) / 2
+    const depth = scope === 'exterior' ? 0.35 : 0.25
+    add({ kind: 'plate', scope, x: cx, y: 0.08, z: cz, length, height: 0.16, width: length, depth, rotation })
+    add({ kind: 'plate', scope, x: cx, y: 7.02, z: cz, length, height: 0.28, width: length, depth, rotation })
+    const count = Math.ceil(length / (16 / 12))
+    for (let i = 0; i <= count; i++) {
+      const f = Math.min(length, i * (length / count))
+      const t = f / length
+      add({ kind: 'stud', scope, x: x1 + (x2 - x1) * t, y: 3.55, z: z1 + (z2 - z1) * t, length: 6.8, height: 6.8, width: 0.14, depth, rotation })
+    }
+    if (scope === 'exterior' && length > 6) {
+      add({ kind: 'blocking', scope, x: cx, y: 3.6, z: cz, length, height: 0.14, width: length, depth, rotation })
+    }
+  }
+  wall(0, 0, model.wFt, 0, 'exterior')
+  wall(0, model.hFt, model.wFt, model.hFt, 'exterior')
+  wall(0, 0, 0, model.hFt, 'exterior')
+  wall(model.wFt, 0, model.wFt, model.hFt, 'exterior')
+  const seen = new Set<string>()
+  for (const room of model.rooms ?? []) {
+    if (room.type === 'hall') continue
+    const runs: [number, number, number, number][] = [
+      [room.x, room.y, room.x + room.w, room.y],
+      [room.x, room.y + room.h, room.x + room.w, room.y + room.h],
+      [room.x, room.y, room.x, room.y + room.h],
+      [room.x + room.w, room.y, room.x + room.w, room.y + room.h],
+    ]
+    for (const run of runs) {
+      const key = [...run].map((v) => v.toFixed(2)).join(':')
+      const reverse = [run[2], run[3], run[0], run[1]].map((v) => v.toFixed(2)).join(':')
+      if (seen.has(key) || seen.has(reverse)) continue
+      seen.add(key)
+      wall(...run, 'interior')
+    }
+    if (room.door) {
+      const horizontal = room.door.wall === 'N' || room.door.wall === 'S'
+      const x = horizontal ? room.x + room.door.pos + room.door.width / 2 : room.door.wall === 'W' ? room.x : room.x + room.w
+      const z = horizontal ? (room.door.wall === 'N' ? room.y : room.y + room.h) : room.y + room.door.pos + room.door.width / 2
+      add({ kind: 'header', scope: 'interior', x, y: 6.85, z, length: room.door.width, height: 0.45, width: room.door.width, depth: 0.3, rotation: horizontal ? 0 : Math.PI / 2 })
+    }
+  }
+  const joistCount = Math.ceil(model.hFt / (16 / 12))
+  for (let i = 0; i <= joistCount; i++) {
+    const z = Math.min(model.hFt, i * (model.hFt / joistCount))
+    add({ kind: 'joist', scope: 'floor', x: model.wFt / 2, y: -0.55, z, length: model.wFt, height: 0.72, width: model.wFt, depth: 0.16, rotation: 0 })
+  }
+  return members
 }
 
 export function createModelMaterials(): ModelMaterials {

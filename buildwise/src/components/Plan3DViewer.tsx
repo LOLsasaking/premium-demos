@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
-import { buildModel, deviceEditOrigin, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
-import { buildDetailedModel, createModelMaterials, planRoomModels } from '../lib/modelKit'
+import { buildModel, deviceEditOrigin, layoutLighting, layoutPower, patchDeviceEdit, patchFurnitureEdit, snapPlanOffset, viewerLayerPreset, type EditableLayer, type PlanEdits, type PlanModel, type SheetKind } from '../lib/drawing'
+import { buildDetailedModel, createModelMaterials, framingMembers, layoutFurniture } from '../lib/modelKit'
 import { cutawayGeometry, loadTechnicalAsset, plumbingBranchPoints, plumbingServiceSource, technicalAssetForDevice, viewerCameraSpan, type TechnicalAssetId } from '../lib/technicalAssets'
 
 /**
@@ -36,6 +36,7 @@ interface Built {
   wallMats: THREE.MeshStandardMaterial[]
   pointLights: THREE.PointLight[]
   fixtureMats: THREE.MeshStandardMaterial[]
+  systemMats: THREE.MeshStandardMaterial[]
   ambient: THREE.AmbientLight
   selectables: THREE.Object3D[]
   stopAsyncAssets: () => void
@@ -58,6 +59,8 @@ function wallBox(
   const mesh = new THREE.Mesh(geo, mat)
   mesh.position.set((x1 + x2) / 2, yBase + h / 2, (z1 + z2) / 2)
   mesh.rotation.y = -Math.atan2(z2 - z1, x2 - x1)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   parent.add(mesh)
 }
 
@@ -102,6 +105,10 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   const hemi = new THREE.HemisphereLight(0xd8ecff, 0x314254, 0.85)
   const key = new THREE.DirectionalLight(0xffffff, 1.45)
   key.position.set(30, 45, 25)
+  key.castShadow = true
+  key.shadow.mapSize.set(2048, 2048)
+  key.shadow.camera.near = 1
+  key.shadow.camera.far = 140
   scene.add(ambient, hemi, key)
 
   const wallMats: THREE.MeshStandardMaterial[] = []
@@ -112,9 +119,15 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   }
   const fixtureMat = new THREE.MeshStandardMaterial({ color: C.fixture, roughness: 0.5 })
   const selectables: THREE.Object3D[] = []
+  const systemMats: THREE.MeshStandardMaterial[] = []
   let acceptAsyncAssets = true
   const tag = (anchor: THREE.Object3D, hitTarget: THREE.Object3D, layer: EditableLayer, id: string, kind: string, baseX: number, baseY: number) => {
     anchor.userData = { editable: true, layer, id, kind, baseX, baseY }
+    hitTarget.userData = { ...anchor.userData, dragTarget: anchor }
+    selectables.push(hitTarget)
+  }
+  const tagFurniture = (anchor: THREE.Object3D, hitTarget: THREE.Object3D, id: string, kind: string, baseX: number, baseY: number, centerX: number, centerY: number) => {
+    anchor.userData = { editable: true, layer: 'furniture', id, kind, baseX, baseY, centerX, centerY }
     hitTarget.userData = { ...anchor.userData, dragTarget: anchor }
     selectables.push(hitTarget)
   }
@@ -146,12 +159,14 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     new THREE.MeshStandardMaterial({ color: 0x4d5a67, roughness: 0.96 }),
   )
   site.position.set(m.wFt / 2, -3.55, m.hFt / 2)
+  site.receiveShadow = true
   root.add(site)
   const slab = new THREE.Mesh(
     new THREE.BoxGeometry(m.wFt + 1.2, 0.48, m.hFt + 1.2),
     new THREE.MeshStandardMaterial({ color: 0x9ba5ac, roughness: 0.94 }),
   )
   slab.position.set(m.wFt / 2, -3.15, m.hFt / 2)
+  slab.receiveShadow = true
   root.add(slab)
   const foundationMat = new THREE.MeshStandardMaterial({ color: 0x77828c, roughness: 0.92 })
   wallBox(root, foundationMat, 0, m.hFt, m.wFt, m.hFt, 2.8, 0.55, -3)
@@ -165,6 +180,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     new THREE.MeshStandardMaterial({ color: C.floor, roughness: 0.9 }),
   )
   floor.position.set(m.wFt / 2, -0.125, cutaway.floorDepth / 2)
+  floor.receiveShadow = true
   root.add(floor)
   const grid = new THREE.GridHelper(Math.max(m.wFt, m.hFt) * 1.7, Math.round(Math.max(m.wFt, m.hFt) / 2), 0x24304a, 0x18233c)
   grid.position.set(m.wFt / 2, -3.31, m.hFt / 2)
@@ -229,12 +245,24 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   const modelMaterials = createModelMaterials()
   const furniture = new THREE.Group()
   furniture.name = 'Detailed house models'
-  for (const placement of planRoomModels(m)) {
+  const baseFurniture = layoutFurniture(m)
+  for (const placement of layoutFurniture(m, edits)) {
+    const anchor = new THREE.Group()
     const object = buildDetailedModel(placement.kind, modelMaterials, placement.width, placement.depth)
-    object.position.set(placement.x, 0, placement.y)
-    object.rotation.y = placement.rotation ?? 0
+    anchor.position.set(placement.x + placement.width / 2, 0, placement.y + placement.depth / 2)
+    anchor.rotation.y = placement.rotation ?? 0
+    object.position.set(-placement.width / 2, 0, -placement.depth / 2)
     object.name = placement.kind
-    furniture.add(object)
+    object.traverse((part) => {
+      const mesh = part as THREE.Mesh
+      if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true }
+    })
+    const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(placement.width, 2.5, placement.depth), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.02, depthWrite: false }))
+    hitTarget.position.set(0, 1.25, 0)
+    anchor.add(object, hitTarget)
+    const base = baseFurniture.find((item) => item.id === placement.id) ?? placement
+    tagFurniture(anchor, hitTarget, placement.id, placement.kind, base.x, base.y, placement.width / 2, placement.depth / 2)
+    furniture.add(anchor)
   }
   root.add(furniture)
 
@@ -306,6 +334,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   const basePower = layoutPower(m)
   const grpElec = new THREE.Group()
   const outletMat = new THREE.MeshStandardMaterial({ color: C.wire, emissive: C.wire, emissiveIntensity: 0.5 })
+  systemMats.push(outletMat)
   for (const d of powerDevs) {
     const anchor = new THREE.Group()
     anchor.position.set(d.x, 1.35, d.y)
@@ -321,9 +350,11 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
   const tube = (pts: THREE.Vector3[], color: number, radius: number) => {
     if (pts.length < 2) return null
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal')
+    const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7, roughness: 0.45 })
+    systemMats.push(material)
     return new THREE.Mesh(
       new THREE.TubeGeometry(curve, Math.max(24, pts.length * 10), radius, 7, false),
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7, roughness: 0.45 }),
+      material,
     )
   }
   for (const kind of ['gfci', 'recep'] as const) {
@@ -378,22 +409,20 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
 
   /* ---- FRAMING layer ------------------------------------------------ */
   const grpStuds = new THREE.Group()
-  const studMat = new THREE.MeshStandardMaterial({ color: C.stud, roughness: 0.8 })
-  const studWall = (x1: number, z1: number, x2: number, z2: number) => {
-    const len = Math.hypot(x2 - x1, z2 - z1)
-    const ux = (x2 - x1) / len
-    const uz = (z2 - z1) / len
-    for (let f = 16 / 12; f < len; f += 16 / 12) {
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.13, WALL_H - 0.4, 0.3), studMat)
-      s.position.set(x1 + ux * f, WALL_H / 2, z1 + uz * f)
-      s.rotation.y = -Math.atan2(uz, ux)
-      grpStuds.add(s)
-    }
+  const studMat = new THREE.MeshStandardMaterial({ color: 0xb9854f, roughness: 0.88 })
+  const headerMat = new THREE.MeshStandardMaterial({ color: 0xd9a35f, roughness: 0.82 })
+  for (const member of framingMembers(m)) {
+    const vertical = member.kind === 'stud'
+    const width = vertical ? member.width : member.width
+    const height = member.height
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, member.depth), member.kind === 'header' ? headerMat : studMat)
+    mesh.position.set(member.x, member.y, member.z)
+    mesh.rotation.y = member.rotation
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    mesh.name = `${member.kind} ${member.scope}`
+    grpStuds.add(mesh)
   }
-  studWall(0, 0, m.wFt, 0)
-  studWall(0, m.hFt, m.wFt, m.hFt)
-  studWall(0, 0, 0, m.hFt)
-  studWall(m.wFt, 0, m.wFt, m.hFt)
   grpStuds.visible = false
   root.add(grpStuds)
 
@@ -403,6 +432,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean):
     wallMats,
     pointLights,
     fixtureMats,
+    systemMats,
     ambient,
     selectables,
     stopAsyncAssets: () => { acceptAsyncAssets = false },
@@ -415,6 +445,8 @@ export default function Plan3DViewer({
   edits,
   onChange,
   focusSheet,
+  cutaway = 72,
+  systemGlow = 65,
   className = '',
 }: {
   answers: Answers
@@ -422,12 +454,14 @@ export default function Plan3DViewer({
   edits?: PlanEdits
   onChange?: (edits: PlanEdits) => void
   focusSheet?: SheetKind
+  cutaway?: number
+  systemGlow?: number
   className?: string
 }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const builtRef = useRef<Built | null>(null)
   const model = useMemo(() => buildModel(answers, pkg), [answers, pkg])
-  const [selected, setSelected] = useState<{ layer: EditableLayer; id: string; kind: string } | null>(null)
+  const [selected, setSelected] = useState<{ layer: EditableLayer | 'furniture'; id: string; kind: string } | null>(null)
   const [layers, setLayers] = useState<Record<Layer, boolean>>({
     lights: true,
     electrical: true,
@@ -451,6 +485,8 @@ export default function Plan3DViewer({
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     mount.appendChild(renderer.domElement)
 
     const span = viewerCameraSpan(m.wFt, m.hFt)
@@ -492,12 +528,14 @@ export default function Plan3DViewer({
       const y = Math.max(0, Math.min(m.hFt, hit.z + m.hFt / 2))
       drag.dx = snapPlanOffset(x - drag.object.userData.baseX)
       drag.dy = snapPlanOffset(y - drag.object.userData.baseY)
-      drag.object.position.x = drag.object.userData.baseX + drag.dx
-      drag.object.position.z = drag.object.userData.baseY + drag.dy
+      drag.object.position.x = drag.object.userData.baseX + drag.dx + (drag.object.userData.centerX ?? 0)
+      drag.object.position.z = drag.object.userData.baseY + drag.dy + (drag.object.userData.centerY ?? 0)
     }
     const onPointerUp = (event: PointerEvent) => {
       if (!drag || drag.pointerId !== event.pointerId) return
-      onChange?.(patchDeviceEdit(edits ?? {}, drag.object.userData.layer, drag.object.userData.id, { dx: drag.dx, dy: drag.dy }))
+      onChange?.(drag.object.userData.layer === 'furniture'
+        ? patchFurnitureEdit(edits ?? {}, drag.object.userData.id, { dx: drag.dx, dy: drag.dy })
+        : patchDeviceEdit(edits ?? {}, drag.object.userData.layer, drag.object.userData.id, { dx: drag.dx, dy: drag.dy }))
       drag = null
       controls.enabled = true
     }
@@ -569,10 +607,11 @@ export default function Plan3DViewer({
     for (const fm of b.fixtureMats) fm.emissiveIntensity = layers.lights ? 1.2 : 0.08
     b.ambient.intensity = layers.lights ? 1.2 : 0.78
     for (const wm of b.wallMats) {
-      wm.opacity = layers.framing ? 0.13 : 0.9
+      wm.opacity = layers.framing ? 0.08 : Math.max(0.12, 1 - cutaway / 115)
       wm.needsUpdate = true
     }
-  }, [layers])
+    for (const material of b.systemMats) material.emissiveIntensity = 0.1 + systemGlow / 70
+  }, [layers, cutaway, systemGlow])
 
   const chips: [Layer, string][] = [
     ['lights', 'Lights on'],
@@ -582,13 +621,20 @@ export default function Plan3DViewer({
   ]
 
   const allDevices = [...layoutPower(model, edits).map((d) => ({ ...d, layer: 'power' as const })), ...layoutLighting(model, edits).map((d) => ({ ...d, layer: 'lighting' as const }))]
-  const selectedDevice = selected ? allDevices.find((d) => d.layer === selected.layer && d.id === selected.id) : undefined
+  const allFurniture = layoutFurniture(model, edits)
+  const selectedDevice = selected && selected.layer !== 'furniture' ? allDevices.find((d) => d.layer === selected.layer && d.id === selected.id) : undefined
+  const selectedFurniture = selected?.layer === 'furniture' ? allFurniture.find((item) => item.id === selected.id) : undefined
   const updateSelected = (update: { dx?: number; dy?: number; removed?: boolean; circuit?: string }) => {
-    if (!selected) return
+    if (!selected || selected.layer === 'furniture') return
     onChange?.(patchDeviceEdit(edits ?? {}, selected.layer, selected.id, update))
   }
   const nudge = (dx: number, dy: number) => {
     if (!selected) return
+    if (selected.layer === 'furniture') {
+      const current = edits?.furniture?.[selected.id]
+      onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { dx: snapPlanOffset((current?.dx ?? 0) + dx), dy: snapPlanOffset((current?.dy ?? 0) + dy) }))
+      return
+    }
     const current = edits?.[selected.layer]?.[selected.id]
     updateSelected({ dx: snapPlanOffset((current?.dx ?? 0) + dx), dy: snapPlanOffset((current?.dy ?? 0) + dy) })
   }
@@ -610,7 +656,7 @@ export default function Plan3DViewer({
         ))}
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-panel/80 px-2 py-1 text-[10px] text-muted">
-        drag empty space to orbit · select and drag a device to edit
+        drag empty space to orbit · select and drag furniture, fixtures, or devices
       </div>
       {selected && selectedDevice && (
         <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-[#08111e]/95 p-3 text-xs shadow-glow backdrop-blur">
@@ -623,6 +669,20 @@ export default function Plan3DViewer({
           </div>
           <label className="mt-3 block text-muted">Circuit<input value={selectedDevice.circuit ?? ''} onChange={(e) => updateSelected({ circuit: e.target.value })} className="mt-1 w-full rounded border border-line bg-ink px-2 py-1.5 text-white outline-none focus:border-cyan" /></label>
           <button onClick={() => { updateSelected({ removed: true }); setSelected(null) }} className="mt-3 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
+        </div>
+      )}
+      {selected && selectedFurniture && (
+        <div className="absolute right-3 top-3 w-56 rounded-xl border border-cyan/40 bg-[#08111e]/95 p-3 text-xs shadow-glow backdrop-blur">
+          <div className="flex items-center justify-between"><span className="font-600 capitalize text-white">{selectedFurniture.kind.replace(/-/g, ' ')}</span><span className="font-mono text-[9px] uppercase text-cyan">Linked object</span></div>
+          <p className="mt-1 font-mono text-[10px] text-muted">X {selectedFurniture.x.toFixed(2)}′ · Y {selectedFurniture.y.toFixed(2)}′</p>
+          <p className="mt-1 font-mono text-[9px] text-muted">{selectedFurniture.width.toFixed(1)}′ × {selectedFurniture.depth.toFixed(1)}′ measured footprint</p>
+          <div className="mt-3 grid grid-cols-3 gap-1">
+            <span /><button onClick={() => nudge(0, -0.25)} className="rounded border border-line py-1.5 text-cyan">↑</button><span />
+            <button onClick={() => nudge(-0.25, 0)} className="rounded border border-line py-1.5 text-cyan">←</button><span className="grid place-items-center font-mono text-[8px] text-muted">3″</span><button onClick={() => nudge(0.25, 0)} className="rounded border border-line py-1.5 text-cyan">→</button>
+            <span /><button onClick={() => nudge(0, 0.25)} className="rounded border border-line py-1.5 text-cyan">↓</button><span />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-1"><button onClick={() => onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { rotation: (selectedFurniture.rotation ?? 0) - Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan">↺ 15°</button><button onClick={() => onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { rotation: (selectedFurniture.rotation ?? 0) + Math.PI / 12 }))} className="rounded border border-line py-2 text-cyan">15° ↻</button></div>
+          <button onClick={() => { onChange?.(patchFurnitureEdit(edits ?? {}, selected.id, { removed: true })); setSelected(null) }} className="mt-3 w-full rounded border border-line py-2 text-muted hover:border-red-400 hover:text-red-300">Remove object</button>
         </div>
       )}
     </div>
