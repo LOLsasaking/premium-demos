@@ -46,6 +46,9 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           <span className="sm:hidden"><Logo size={29} compact /></span>
           <span className="hidden sm:inline-flex"><Logo size={29} /></span>
           <span className="hidden h-5 w-px bg-line sm:block" />
+          <nav className="hidden items-center gap-1 xl:flex" aria-label="Workspace commands">
+            {['Insert', 'Inspect', 'Systems', 'Sections', 'Perform'].map((item, index) => <button key={item} className={`rounded px-2.5 py-1.5 text-[11px] transition hover:bg-cyan/10 hover:text-cyan ${index === 0 ? 'text-cyan' : 'text-[#9aabc0]'}`}>{item}</button>)}
+          </nav>
           <div className="hidden min-w-0 sm:block"><p className="truncate text-xs font-600 text-white">{pkg.headline}</p><p className="hidden font-mono text-[8px] uppercase tracking-[.15em] text-muted md:block">Project workspace · autosaved locally</p></div>
         </div>
         <div className="flex items-center gap-2">
@@ -71,11 +74,21 @@ export default function ProjectWorkspace({ pkg, answers, initialEdits, onEditsCh
           </div>
         </main>
 
-        <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-line bg-[#08111d] p-4 xl:block">
-          <p className="font-mono text-[9px] uppercase tracking-[.18em] text-cyan">Project systems</p>
-          <div className="mt-3 space-y-2">{pkg.disciplines.map((id) => <div key={id} className="flex items-center gap-3 rounded-lg border border-line bg-panel/50 p-3"><span className="grid h-8 w-8 place-items-center rounded bg-blueprint/10 text-blueprint"><Icon path={DISCIPLINES[id].icon} size={16} /></span><div><p className="text-xs font-600 text-white">{DISCIPLINES[id].name}</p><p className="font-mono text-[8px] uppercase text-muted">Layer active</p></div><span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan" /></div>)}</div>
+        <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-[#1d3048] bg-[#0b1624] xl:block">
+          <div className="flex items-center justify-between border-b border-[#1d3048] px-4 py-3"><p className="text-xs font-600 text-white">Explorer</p><Icon path="M4 6h16M4 12h16M4 18h16" size={15} className="text-muted" /></div>
+          <div className="p-4">
+          <label className="flex items-center gap-2 rounded-md border border-line bg-[#07111d] px-2.5 py-2 text-muted"><Icon path="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" size={13} /><input aria-label="Search project layers" placeholder="Search layers" className="min-w-0 flex-1 bg-transparent text-[11px] text-white outline-none placeholder:text-muted" /></label>
+          <div className="mt-4 rounded-md border border-line bg-[#08111d] p-2">
+            <p className="flex items-center gap-2 px-1 py-1.5 text-[11px] font-600 text-white"><span className="text-cyan">⌄</span> Cadvora project</p>
+            <p className="flex items-center gap-2 border-l border-line py-1.5 pl-5 text-[10px] text-[#9aabc0]"><span className="text-cyan">⌄</span> Floor 01</p>
+            {pkg.disciplines.map((id) => <div key={id} className="ml-5 flex items-center gap-2 border-l border-line px-3 py-1.5 text-[10px] text-[#aab8c8]"><Icon path={DISCIPLINES[id].icon} size={12} /><span className="flex-1">{DISCIPLINES[id].name}</span><span className="text-cyan">●</span></div>)}
+            <div className="ml-5 flex items-center gap-2 border-l border-line px-3 py-1.5 text-[10px] text-[#aab8c8]"><Icon path="M3 20h18M5 20V8l7-5 7 5v12" size={12} /><span className="flex-1">Architecture</span><span className="text-cyan">●</span></div>
+            <div className="ml-5 flex items-center gap-2 border-l border-line px-3 py-1.5 text-[10px] text-[#aab8c8]"><Icon path="M4 4h16v16H4zM4 12h16" size={12} /><span className="flex-1">Furniture</span><span className="text-cyan">●</span></div>
+          </div>
           <div className="mt-6 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">Project summary</p><dl className="mt-3 grid grid-cols-2 gap-2"><Summary label="Cost" value={`${formatUSD(pkg.costLow)}–${formatUSD(pkg.costHigh)}`} /><Summary label="Timeline" value={`${pkg.timelineWeeks[0]}–${pkg.timelineWeeks[1]} wks`} /><Summary label="Sheets" value={String(sheets.length)} /><Summary label="Edits" value={String(editCount)} /></dl></div>
+          <div className="mt-5 border-t border-line pt-5"><p className="font-mono text-[9px] uppercase tracking-[.18em] text-muted">View properties</p><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">Cutaway</span><input type="range" min="0" max="100" defaultValue="72" className="h-1 flex-1 accent-cyan" /></label><label className="mt-3 flex items-center gap-3 text-[10px] text-muted"><span className="w-16">System glow</span><input type="range" min="0" max="100" defaultValue="65" className="h-1 flex-1 accent-blueprint" /></label></div>
           <div className="mt-6 rounded-lg border border-cyan/20 bg-cyan/5 p-3 text-[11px] leading-5 text-muted"><span className="font-600 text-cyan">Professional review required.</span> Cadvora accelerates planning and coordination; qualified professionals must review final construction documents.</div>
+          </div>
         </aside>
       </div>
 

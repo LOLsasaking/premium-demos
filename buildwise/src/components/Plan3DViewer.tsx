@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { Answers, ProjectPackage } from '../interview/engine'
 import { buildModel, layoutLighting, layoutPower, patchDeviceEdit, snapPlanOffset, type EditableLayer, type PlanEdits, type PlanModel } from '../lib/drawing'
 import { buildDetailedModel, createModelMaterials, planRoomModels } from '../lib/modelKit'
+import { cutawayGeometry, loadTechnicalAsset, plumbingServiceSource, technicalAssetForDevice, type TechnicalAssetId } from '../lib/technicalAssets'
 
 /**
  * 3D model of the generated project — the same PlanModel and device layouts
@@ -37,6 +38,7 @@ interface Built {
   fixtureMats: THREE.MeshStandardMaterial[]
   ambient: THREE.AmbientLight
   selectables: THREE.Object3D[]
+  stopAsyncAssets: () => void
 }
 
 function wallBox(
@@ -86,7 +88,7 @@ function wallWithGaps(
   wallBox(parent, mat, x1 + ux * cursor, z1 + uz * cursor, x2, z2, WALL_H, t)
 }
 
-function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
+function buildScene(m: PlanModel, edits: PlanEdits | undefined, smart: boolean): Built {
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(C.bg)
   scene.fog = new THREE.Fog(C.bg, 70, 160)
@@ -94,6 +96,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   const root = new THREE.Group()
   root.position.set(-m.wFt / 2, 0, -m.hFt / 2)
   scene.add(root)
+  const cutaway = cutawayGeometry(m.wFt, m.hFt)
 
   const ambient = new THREE.AmbientLight(0xffffff, 1.2)
   const hemi = new THREE.HemisphereLight(0xd8ecff, 0x314254, 0.85)
@@ -109,20 +112,62 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   }
   const fixtureMat = new THREE.MeshStandardMaterial({ color: C.fixture, roughness: 0.5 })
   const selectables: THREE.Object3D[] = []
-  const tag = (mesh: THREE.Object3D, layer: EditableLayer, id: string, kind: string, baseX: number, baseY: number) => {
-    mesh.userData = { editable: true, layer, id, kind, baseX, baseY }
-    selectables.push(mesh)
+  let acceptAsyncAssets = true
+  const tag = (anchor: THREE.Object3D, hitTarget: THREE.Object3D, layer: EditableLayer, id: string, kind: string, baseX: number, baseY: number) => {
+    anchor.userData = { editable: true, layer, id, kind, baseX, baseY }
+    hitTarget.userData = { ...anchor.userData, dragTarget: anchor }
+    selectables.push(hitTarget)
+  }
+  const mountAsset = (
+    anchor: THREE.Object3D,
+    id: TechnicalAssetId,
+    fallback: THREE.Object3D,
+    scale: number,
+    rotation: [number, number, number] = [0, 0, 0],
+    offset: [number, number, number] = [0, 0, 0],
+  ) => {
+    loadTechnicalAsset(id).then((asset) => {
+      if (!acceptAsyncAssets) return
+      asset.scale.setScalar(scale)
+      asset.rotation.set(...rotation)
+      asset.position.set(...offset)
+      asset.name = id
+      anchor.add(asset)
+      fallback.visible = false
+    }).catch(() => {
+      // The lightweight fallback remains usable if a model cannot be fetched.
+    })
   }
 
-  // Floor + grid.
+  // Concrete site, exposed foundation/service level, floor + grid. The front
+  // foundation is intentionally opened so the technical systems remain visible.
+  const site = new THREE.Mesh(
+    new THREE.BoxGeometry(m.wFt + 8, 0.45, m.hFt + 8),
+    new THREE.MeshStandardMaterial({ color: 0x4d5a67, roughness: 0.96 }),
+  )
+  site.position.set(m.wFt / 2, -3.55, m.hFt / 2)
+  root.add(site)
+  const slab = new THREE.Mesh(
+    new THREE.BoxGeometry(m.wFt + 1.2, 0.48, m.hFt + 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x9ba5ac, roughness: 0.94 }),
+  )
+  slab.position.set(m.wFt / 2, -3.15, m.hFt / 2)
+  root.add(slab)
+  const foundationMat = new THREE.MeshStandardMaterial({ color: 0x77828c, roughness: 0.92 })
+  wallBox(root, foundationMat, 0, m.hFt, m.wFt, m.hFt, 2.8, 0.55, -3)
+  wallBox(root, foundationMat, 0, 0, 0, m.hFt, 2.8, 0.55, -3)
+  wallBox(root, foundationMat, m.wFt, 0, m.wFt, m.hFt, 2.8, 0.55, -3)
+  wallBox(root, foundationMat, 0, 0, m.wFt * 0.18, 0, 2.8, 0.55, -3)
+  wallBox(root, foundationMat, m.wFt * 0.82, 0, m.wFt, 0, 2.8, 0.55, -3)
+
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(m.wFt, 0.25, m.hFt),
+    new THREE.BoxGeometry(m.wFt, 0.25, cutaway.floorDepth),
     new THREE.MeshStandardMaterial({ color: C.floor, roughness: 0.9 }),
   )
-  floor.position.set(m.wFt / 2, -0.125, m.hFt / 2)
+  floor.position.set(m.wFt / 2, -0.125, cutaway.floorDepth / 2)
   root.add(floor)
   const grid = new THREE.GridHelper(Math.max(m.wFt, m.hFt) * 1.7, Math.round(Math.max(m.wFt, m.hFt) / 2), 0x24304a, 0x18233c)
-  grid.position.set(m.wFt / 2, -0.26, m.hFt / 2)
+  grid.position.set(m.wFt / 2, -3.31, m.hFt / 2)
   root.add(grid)
 
   // Exterior shell (front-door gap on its wall).
@@ -130,7 +175,8 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   const fd = m.door
   const T = 0.4
   wallWithGaps(root, ext, 0, 0, m.wFt, 0, T, fd.wall === 'N' ? [{ pos: fd.pos, width: fd.width }] : [])
-  wallWithGaps(root, ext, 0, m.hFt, m.wFt, m.hFt, T, fd.wall === 'S' ? [{ pos: fd.pos, width: fd.width }] : [])
+  wallBox(root, ext, 0, m.hFt, cutaway.openingStart, m.hFt, WALL_H, T)
+  wallBox(root, ext, cutaway.openingEnd, m.hFt, m.wFt, m.hFt, WALL_H, T)
   wallWithGaps(root, ext, 0, 0, 0, m.hFt, T, fd.wall === 'W' ? [{ pos: fd.pos, width: fd.width }] : [])
   wallWithGaps(root, ext, m.wFt, 0, m.wFt, m.hFt, T, fd.wall === 'E' ? [{ pos: fd.pos, width: fd.width }] : [])
 
@@ -211,25 +257,28 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   cans.forEach((d, i) => {
     const emat = new THREE.MeshStandardMaterial({ color: 0xffe9c0, emissive: C.light, emissiveIntensity: 1.2 })
     fixtureMats.push(emat)
-    if (d.kind === 'pendant') {
-      const cord = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03, 0.03, 1.8, 6),
-        new THREE.MeshBasicMaterial({ color: C.edge }),
-      )
-      cord.position.set(d.x, WALL_H - 0.9, d.y)
-      grpLights.add(cord)
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 12), emat)
-      bulb.position.set(d.x, WALL_H - 1.9, d.y)
-      const base = baseLights.get(d.id)!
-      tag(bulb, 'lighting', d.id, d.kind, base.x, base.y)
-      grpLights.add(bulb)
-    } else {
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.1, 14), emat)
-      disc.position.set(d.x, WALL_H - 0.06, d.y)
-      const base = baseLights.get(d.id)!
-      tag(disc, 'lighting', d.id, d.kind, base.x, base.y)
-      grpLights.add(disc)
-    }
+    const anchor = new THREE.Group()
+    anchor.position.set(d.x, d.kind === 'pendant' ? WALL_H - 1.5 : WALL_H - 0.12, d.y)
+    const fallback = new THREE.Mesh(
+      d.kind === 'pendant' ? new THREE.SphereGeometry(0.3, 14, 12) : new THREE.CylinderGeometry(0.35, 0.35, 0.1, 14),
+      emat,
+    )
+    anchor.add(fallback)
+    const hitTarget = new THREE.Mesh(
+      new THREE.SphereGeometry(d.kind === 'pendant' ? 0.75 : 0.6, 10, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }),
+    )
+    anchor.add(hitTarget)
+    const base = baseLights.get(d.id)!
+    tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
+    mountAsset(
+      anchor,
+      technicalAssetForDevice('lighting', d.kind, smart),
+      fallback,
+      d.kind === 'pendant' ? 0.82 : 0.72,
+      d.kind === 'pendant' ? [Math.PI, 0, 0] : [Math.PI, 0, 0],
+    )
+    grpLights.add(anchor)
     // Budget the real lights (forward renderer): at most 6 point lights.
     if (i % Math.ceil(cans.length / 6) === 0) {
       const pl = new THREE.PointLight(0xffd9a0, 14, 26, 1.8)
@@ -239,11 +288,16 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
     }
   })
   lightDevs.filter((d) => d.kind === 'switch' || d.kind === 'uc').forEach((d) => {
+    const anchor = new THREE.Group()
+    anchor.position.set(d.x, d.kind === 'switch' ? 3.8 : 6.35, d.y)
     const marker = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: C.light, emissive: C.light, emissiveIntensity: 0.8 }))
-    marker.position.set(d.x, d.kind === 'switch' ? 3.8 : 6.6, d.y)
+    anchor.add(marker)
+    const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.5), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
+    anchor.add(hitTarget)
     const base = baseLights.get(d.id)!
-    tag(marker, 'lighting', d.id, d.kind, base.x, base.y)
-    grpLights.add(marker)
+    tag(anchor, hitTarget, 'lighting', d.id, d.kind, base.x, base.y)
+    mountAsset(anchor, technicalAssetForDevice('lighting', d.kind, smart), marker, d.kind === 'switch' ? 0.48 : 0.38, [0, 0, 0])
+    grpLights.add(anchor)
   })
   root.add(grpLights)
 
@@ -253,11 +307,16 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
   const grpElec = new THREE.Group()
   const outletMat = new THREE.MeshStandardMaterial({ color: C.wire, emissive: C.wire, emissiveIntensity: 0.5 })
   for (const d of powerDevs) {
+    const anchor = new THREE.Group()
+    anchor.position.set(d.x, 1.35, d.y)
     const o = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.32), outletMat)
-    o.position.set(d.x, 1.3, d.y)
+    anchor.add(o)
+    const hitTarget = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.7), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.025, depthWrite: false }))
+    anchor.add(hitTarget)
     const base = basePower.get(d.id)!
-    tag(o, 'power', d.id, d.kind, base.x, base.y)
-    grpElec.add(o)
+    tag(anchor, hitTarget, 'power', d.id, d.kind, base.x, base.y)
+    mountAsset(anchor, technicalAssetForDevice('power', d.kind, smart), o, d.kind === 'dedicated' ? 0.58 : 0.5, [0, 0, 0])
+    grpElec.add(anchor)
   }
   const tube = (pts: THREE.Vector3[], color: number, radius: number) => {
     if (pts.length < 2) return null
@@ -276,17 +335,50 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
 
   /* ---- PLUMBING layer ---------------------------------------------- */
   const grpPlumb = new THREE.Group()
-  const wh = m.appliances.find((ap) => ap.label === 'WH')
-  if (wh && m.hasPlumbing) {
+  if (m.hasPlumbing) {
+    const service = plumbingServiceSource(m.appliances, m.wFt, m.hFt)
+    const serviceY = -1.8
+    const coldTrunk = tube(
+      [new THREE.Vector3(0.8, serviceY, cutaway.serviceZ), new THREE.Vector3(m.wFt - 0.8, serviceY, cutaway.serviceZ)],
+      C.wire,
+      0.16,
+    )
+    const hotTrunk = tube(
+      [new THREE.Vector3(1.15, serviceY + 0.55, cutaway.serviceZ + 0.38), new THREE.Vector3(m.wFt - 1.15, serviceY + 0.55, cutaway.serviceZ + 0.38)],
+      C.water,
+      0.13,
+    )
+    if (coldTrunk) grpPlumb.add(coldTrunk)
+    if (hotTrunk) grpPlumb.add(hotTrunk)
     for (const ap of m.appliances) {
       if (!['SINK', 'LAV', 'TUB', 'WC', 'DW'].includes(ap.label)) continue
       const t = tube(
-        [new THREE.Vector3(wh.x, 0.4, wh.y), new THREE.Vector3((wh.x + ap.x) / 2, 0.35, (wh.y + ap.y) / 2), new THREE.Vector3(ap.x, 0.5, ap.y)],
-        C.water,
-        0.07,
+        [
+          new THREE.Vector3(service.x, 0.45, service.y),
+          new THREE.Vector3(service.x, serviceY, cutaway.serviceZ),
+          new THREE.Vector3(ap.x, serviceY, cutaway.serviceZ),
+          new THREE.Vector3(ap.x, serviceY, ap.y),
+          new THREE.Vector3(ap.x, 0.45, ap.y),
+        ],
+        ap.label === 'WC' || ap.label === 'TUB' ? C.wire : C.water,
+        ap.label === 'WC' ? 0.13 : 0.09,
       )
       if (t) grpPlumb.add(t)
     }
+    const addServiceAsset = (id: TechnicalAssetId, x: number, y: number, z: number, scale: number, rot: [number, number, number] = [0, 0, 0]) => {
+      const anchor = new THREE.Group()
+      anchor.position.set(x, y, z)
+      const fallback = new THREE.Mesh(new THREE.SphereGeometry(0.18), new THREE.MeshStandardMaterial({ color: C.water }))
+      anchor.add(fallback)
+      mountAsset(anchor, id, fallback, scale, rot)
+      grpPlumb.add(anchor)
+    }
+    addServiceAsset('valve-shutoff', service.x, serviceY + 0.4, cutaway.serviceZ, 0.62)
+    addServiceAsset('pipe-tee', m.wFt * 0.5, serviceY, cutaway.serviceZ, 0.7)
+    addServiceAsset('pipe-elbow', m.wFt * 0.72, serviceY, cutaway.serviceZ, 0.7)
+    addServiceAsset('floor-drain', m.wFt * 0.52, -2.85, m.hFt * 0.82, 0.8)
+    const trapTarget = m.appliances.find((ap) => ['SINK', 'LAV'].includes(ap.label))
+    if (trapTarget) addServiceAsset('pipe-ptrap', trapTarget.x, serviceY + 0.15, trapTarget.y, 0.65)
   }
   root.add(grpPlumb)
 
@@ -319,6 +411,7 @@ function buildScene(m: PlanModel, edits: PlanEdits | undefined): Built {
     fixtureMats,
     ambient,
     selectables,
+    stopAsyncAssets: () => { acceptAsyncAssets = false },
   }
 }
 
@@ -350,7 +443,7 @@ export default function Plan3DViewer({
     const mount = mountRef.current
     if (!mount) return
     const m = model
-    const built = buildScene(m, edits)
+    const built = buildScene(m, edits, answers.smart === 'full' || answers.smart === 'basic')
     builtRef.current = built
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -366,7 +459,7 @@ export default function Plan3DViewer({
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
-    controls.target.set(0, 1.5, 0)
+    controls.target.set(0, -0.35, 0)
     controls.maxPolarAngle = Math.PI / 2.05
     controls.minDistance = span * 0.35
     controls.maxDistance = span * 2.2
@@ -387,7 +480,8 @@ export default function Plan3DViewer({
       event.preventDefault()
       controls.enabled = false
       renderer.domElement.setPointerCapture(event.pointerId)
-      drag = { object: picked, pointerId: event.pointerId, dx: 0, dy: 0 }
+      const dragTarget = (picked.userData.dragTarget as THREE.Object3D | undefined) ?? picked
+      drag = { object: dragTarget, pointerId: event.pointerId, dx: 0, dy: 0 }
       setSelected({ layer: picked.userData.layer, id: picked.userData.id, kind: picked.userData.kind })
     }
     const onPointerMove = (event: PointerEvent) => {
@@ -446,6 +540,7 @@ export default function Plan3DViewer({
       clearTimeout(idleTimer)
       ro.disconnect()
       controls.dispose()
+      built.stopAsyncAssets()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)

@@ -15,6 +15,7 @@ import {
   type PowerDevice,
   type SheetTheme,
 } from '../lib/drawing'
+import { planRoomModels, type ModelPlacement } from '../lib/modelKit'
 
 type AnyDevice = (PowerDevice | LightDevice) & { layer: 'power' | 'lighting' }
 
@@ -66,6 +67,7 @@ export default function SheetEditor({
     ],
     [model, edits],
   )
+  const furniture = useMemo(() => planRoomModels(model), [model])
   const sel = devices.find((d) => d.layer + ':' + d.id === selected) ?? null
 
   function patch(layer: 'power' | 'lighting', id: string, up: Partial<{ dx: number; dy: number; removed: boolean; circuit: string }>) {
@@ -118,6 +120,12 @@ export default function SheetEditor({
         onPointerDown={() => setSelected(null)}
       >
         <g dangerouslySetInnerHTML={{ __html: shell }} />
+
+        <g aria-label="Furniture and equipment plan" fill="none" stroke={theme === 'autocad' ? '#91A9C3' : '#64748B'} strokeWidth="1.1">
+          {furniture.map((item, index) => (
+            <PlanFurniture key={`${item.kind}-${index}`} item={item} x0={tf.x0} y0={tf.y0} scale={tf.s} />
+          ))}
+        </g>
 
         {devices.map((d) => {
           if (d.layer === 'power' && !showPower) return null
@@ -237,5 +245,28 @@ export default function SheetEditor({
         </button>
       )}
     </div>
+  )
+}
+
+function PlanFurniture({ item, x0, y0, scale }: { item: ModelPlacement; x0: number; y0: number; scale: number }) {
+  const x = x0 + item.x * scale
+  const y = y0 + item.y * scale
+  const w = item.width * scale
+  const h = item.depth * scale
+  const rotation = ((item.rotation ?? 0) * 180) / Math.PI
+  const transform = `translate(${x} ${y}) rotate(${rotation} ${w / 2} ${h / 2})`
+  const rounded = item.kind === 'sofa' || item.kind === 'bed' || item.kind === 'tub'
+  return (
+    <g transform={transform} opacity="0.9">
+      <rect width={w} height={h} rx={rounded ? Math.min(5, w * 0.08) : 1.5} strokeDasharray={item.kind.includes('cabinet') ? '3 2' : undefined} />
+      {item.kind === 'bed' && <><line x1="0" y1={h * 0.27} x2={w} y2={h * 0.27} /><rect x={w * 0.08} y={h * 0.06} width={w * 0.36} height={h * 0.14} rx="2" /><rect x={w * 0.56} y={h * 0.06} width={w * 0.36} height={h * 0.14} rx="2" /></>}
+      {item.kind === 'sofa' && <><rect x={w * 0.05} y={h * 0.1} width={w * 0.9} height={h * 0.65} rx="3" /><line x1={w / 3} y1={h * 0.1} x2={w / 3} y2={h * 0.75} /><line x1={w * 2 / 3} y1={h * 0.1} x2={w * 2 / 3} y2={h * 0.75} /></>}
+      {(item.kind === 'coffee-table' || item.kind === 'dining-table' || item.kind === 'island') && <><line x1={w / 2} y1="0" x2={w / 2} y2={h} /><line x1="0" y1={h / 2} x2={w} y2={h / 2} /></>}
+      {item.kind === 'toilet' && <><ellipse cx={w / 2} cy={h * 0.64} rx={w * 0.28} ry={h * 0.27} /><rect x={w * 0.22} y={h * 0.08} width={w * 0.56} height={h * 0.25} rx="2" /></>}
+      {item.kind === 'range' && <>{[0.3, 0.7].flatMap((cx) => [0.3, 0.7].map((cy) => <circle key={`${cx}-${cy}`} cx={w * cx} cy={h * cy} r={Math.min(w, h) * 0.12} />))}</>}
+      {item.kind === 'sink-base' && <ellipse cx={w / 2} cy={h / 2} rx={w * 0.28} ry={h * 0.3} />}
+      {item.kind === 'refrigerator' && <><line x1={w / 2} y1="0" x2={w / 2} y2={h} /><path d={`M ${w * 0.44} ${h * 0.18} v ${h * 0.55} M ${w * 0.56} ${h * 0.18} v ${h * 0.55}`} /></>}
+      <title>{item.kind.replace(/-/g, ' ')}</title>
+    </g>
   )
 }
